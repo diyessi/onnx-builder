@@ -1,16 +1,32 @@
 import onnx
-from onnx import TensorProto
-from builder.builder import Builder
-from builder import *
 import numpy as np
+from builder import *
+
+
+def a_plus_b():
+    # Create two sources of data. For now ONNX graph
+    # inputs need to be Placeholder
+    a = Placeholder(onnx.TensorProto.FLOAT, [32, 32])
+    b = Placeholder(onnx.TensorProto.FLOAT, [32, 32])
+
+    # The builder will convert a graph to ONNX
+    builder = Builder('a plus b')
+    # build needs a list of inputs and a list of outputs.
+    builder.build([builder.named('a', a),  # Export first input as 'a'
+                   builder.named('b', b)],  # Export second input as 'b'
+                  # A single output exported as 'output'
+                  # We can inline this simple graph construction
+                  [builder.named('output', Abs(a)+b)])
+    onnx.save(builder.model_def, 'a_plus_b.onnx')
 
 
 def run():
+    a_plus_b()
     N = 4
     T = 140
-    X = Placeholder(TensorProto.FLOAT, [N, 32, 32, 3])
-    mean = Placeholder(TensorProto.FLOAT, [32, 32, 3])
-    var = Placeholder(TensorProto.FLOAT, [32, 32, 3])
+    X = Placeholder(onnx.TensorProto.FLOAT, [N, 32, 32, 3])
+    mean = Placeholder(onnx.TensorProto.FLOAT, [32, 32, 3])
+    var = Placeholder(onnx.TensorProto.FLOAT, [32, 32, 3])
     BX = BatchNormalization(X,
                             Constant([1.0, 1.0, 1.0], dtype=np.float32),
                             Constant([0.0, 0.0, 0.0], dtype=np.float32),
@@ -18,8 +34,8 @@ def run():
     vpad = Pad(BX, Constant([0, 2, 0, 0], dtype=np.int64))
     sum = Pad(vpad + Abs(vpad), Constant([3, 3, 3, 3], dtype=np.int64))
 
-    S = Placeholder(TensorProto.FLOAT, [N, T, 128])
-    lens = Placeholder(TensorProto.INT32, [N, T])
+    S = Placeholder(onnx.TensorProto.FLOAT, [N, T, 128])
+    lens = Placeholder(onnx.TensorProto.INT32, [N, T])
     CW = Constant(np.ones([1, 64, 128], dtype=np.float32))
     CR = Constant(np.ones([1, 64, 16], dtype=np.float32))
     CB = Constant(np.zeros([1, 128], dtype=np.float32))
