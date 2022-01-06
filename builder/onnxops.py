@@ -42,6 +42,12 @@ class Value:
     def __add__(self, other):
         return Add(self, other)
 
+    def __mul__(self, other):
+        return Mul(self, other)
+
+    def __sub__(self, other):
+        return Sub(self, other)
+
     def __eq__(self, other):
         return self.value_node is other.value_node and self.value_index == other.value_index
 
@@ -50,6 +56,8 @@ class Value:
 
 
 class Node:
+    node_attributes = []
+
     def __init__(self, op_type, node_name=None, **kwargs):
         super().__init__(**kwargs)
         self._node_name = node_name
@@ -73,13 +81,40 @@ class Node:
         output_names = [exporter.exporter_value_name(node_output_value)
                         for node_output_value in self.used_node_output_values(exporter, used_values)]
         return helper.make_node(
-            self.op_type, input_names, output_names, node_name, **self.node_attributes(exporter, node_name))
+            self.op_type, input_names, output_names, node_name, **self.node_attribute_dict(exporter, node_name))
+
+    def node_input_values(self, exporter):
+        result = []
+        for name in self.__class__.node_inputs:
+            value = getattr(self, name)
+            if value:
+                result.append(value)
+            else:
+                break
+        return result
+
+    def node_attribute_dict(self, exporter, node_name):
+        result = {}
+        for name in self.__class__.node_attributes:
+            value = getattr(self, name)
+            if value:
+                result[name] = value
+        return result
 
     def node_output_values(self, exporter):
-        return [self.output]
+        result = []
+        for name in self.__class__.node_outputs:
+            value = getattr(self, name)
+            if value:
+                result.append(value)
+            else:
+                break
+        return result
 
 
 class DefaultNodeValue(Node, Value):
+    node_outputs = ['output']
+
     def __init__(self, value_name='output', value_index=0, node_name=None, **kwargs):
         super().__init__(value_name=value_name,
                          value_index=value_index, node_name=node_name, **kwargs)
@@ -95,12 +130,6 @@ class DefaultNodeValue(Node, Value):
     @property
     def output(self):
         return self
-
-    def node_attributes(self, exporter, node_name):
-        return {}
-
-    def node_outputs(self, exporter):
-        return [self]
 
 
 class SecondaryValue(Value):
@@ -118,6 +147,9 @@ class SecondaryValue(Value):
 
 
 class Placeholder(DefaultNodeValue):
+    node_inputs = []
+    node_outputs = ['output']
+
     def __init__(self, elt_type=np.float32, shape=None, **kwargs):
         super().__init__(op_type='Placeholder', value_name='output', **kwargs)
         self._elt_type = elt_type
@@ -131,16 +163,11 @@ class Placeholder(DefaultNodeValue):
     def shape(self):
         return self._shape
 
-    @property
-    def value_type(self):
-        return self.elt_type, self.shape
-
-    # Node protocol
-    def node_input_values(self, exporter):
-        return []
-
 
 class Abs(DefaultNodeValue):
+    node_inputs = ['X']
+    node_outputs = ['Y']
+
     def __init__(self, X, **kwargs):
         super().__init__(op_type='Abs', value_name='Y', **kwargs)
         self._X = X
@@ -155,12 +182,11 @@ class Abs(DefaultNodeValue):
     def Y(self):
         return self
 
-    # Node protocol
-    def node_input_values(self, exporter):
-        return [self.X]
-
 
 class Add(DefaultNodeValue):
+    node_inputs = ['A', 'B']
+    node_outputs = ['C']
+
     def __init__(self, A, B, **kwargs):
         super().__init__(op_type='Add', value_name='C', **kwargs)
         self._A = A
@@ -180,12 +206,12 @@ class Add(DefaultNodeValue):
     def C(self):
         return self
 
-    # Node protocol
-    def node_input_values(self, exporter):
-        return [self.A, self.B]
-
 
 class BatchNormalization(DefaultNodeValue):
+    node_inputs = ['X', 'scale', 'B', 'input_mean', 'input_var']
+    node_attributes = ['epsilon', 'momentum', 'training_mode']
+    node_outputs = ['Y', 'running_mean', 'running_var']
+
     def __init__(self, X, scale, B, input_mean, input_var, epsilon=None, momentum=None, training_mode=None, **kwargs):
         super().__init__(op_type='BatchNormalization', value_name='Y', **kwargs)
         self._X = X
@@ -244,32 +270,10 @@ class BatchNormalization(DefaultNodeValue):
     def running_var(self):
         return SecondaryValue(self, 'running_var', 2, value_optional=True)
 
-    # Node protocol
-    def node_input_values(self, exporter):
-        if exporter.opset >= 15:
-            return [self.X, self.scale, self.B, self.input_mean, self.input_var]
-        else:
-            raise OpNotSupportedError()
-
-    def node_attributes(self, exporter, node_name):
-        node_attributes = {}
-        if exporter.opset >= 15:
-            if self.epsilon:
-                node_attributes['epsilon'] = self.epsilon
-            if self.momentum:
-                node_attributes['momentum'] = self.momentum
-            if self.training_mode:
-                node_attributes['self.training_mode'] = self.training_mode
-        return node_attributes
-
-    def node_output_values(self, exporter):
-        if exporter.opset >= 15:
-            return [self.Y, self.running_mean, self.running_var]
-        else:
-            raise OpNotSupportedError()
-
 
 class Constant(DefaultNodeValue):
+    node_inputs = []
+
     def __init__(self, value, dtype=None, value_name=None, **kwargs):
         super().__init__(op_type='Constant', **kwargs)
         if not type(value) is np.ndarray:
@@ -279,11 +283,8 @@ class Constant(DefaultNodeValue):
         else:
             raise ValueError()
 
-    def node_input_values(self, exporter):
-        return []
-
-    def node_attributes(self, exporter, node_name):
-        value_name = self.value_name or node_name
+    def node_attribute_dict(self, exporter, node_name):
+        value_name = exporter.exporter_value_name(self)
         value = self._value
         if value.dtype is np.dtype('int64'):
             return {'value': helper.make_tensor(name=value_name, data_type=TensorProto.INT64, dims=value.shape, vals=value.flatten().astype(np.int64))}
@@ -292,6 +293,12 @@ class Constant(DefaultNodeValue):
 
 
 class LSTM(Node):
+    node_inputs = ['X', 'W', 'R', 'B',
+                   'sequence_lens', 'initial_h', 'initial_c', 'P']
+    node_attributes = ['activation_alpha', 'activation_beta', 'activations',
+                       'clip', 'direction', 'hidden_size', 'input_forget', 'layout']
+    node_outputs = ['Y', 'Y_h', 'Y_c']
+
     def __init__(self, X, W, R, B=None, sequence_lens=None, initial_h=None, initial_c=None, P=None,
                  activation_alpha=None, activation_beta=None, activations=None, clip=None, direction=None, hidden_size=None,
                  input_forget=None, layout=None, **kwargs):
@@ -329,30 +336,59 @@ class LSTM(Node):
     def Y_c(self):
         return SecondaryValue(self, 'Y_c', 2, value_optional=True)
 
-    def node_input_values(self, exporter):
-        if exporter.opset >= 14:
-            inputs = [self.X, self.W, self.R]
-            return _append_if(inputs, self.B, self.sequence_lens,
-                              self.initial_h, self.initial_c, self.P)
-        else:
-            raise OpNotSupportedError()
 
-    def node_attributes(self, exporter, node_name):
-        if exporter.opset >= 14:
-            return _update_if({}, {'activation_alpha': self.activation_alpha,
-                                   'activation_beta': self.activation_beta,
-                                   'activations': self.activations,
-                                   'clip': self.clip,
-                                   'direction': self.direction,
-                                   'hidden_size': self.hidden_size,
-                                   'input_forget': self.input_forget,
-                                   'layout': self.layout})
+class MatMul(DefaultNodeValue):
+    node_inputs = ['A', 'B']
+    node_outputs = ['Y']
 
-    def node_output_values(self, exporter):
-        return [self.Y, self.Y_h, self.Y_c]
+    def __init__(self, A, B, **kwargs):
+        super().__init__(op_type='MatMul', value_name='Y', **kwargs)
+        self._A = A
+        self._B = B
+
+    # Inputs
+    @property
+    def A(self):
+        return self._A
+
+    @property
+    def B(self):
+        return self._B
+
+    # Outputs
+    @property
+    def Y(self):
+        return self
+
+
+class Mul(DefaultNodeValue):
+    node_inputs = ['A', 'B']
+    node_outputs = ['C']
+
+    def __init__(self, A, B, **kwargs):
+        super().__init__(op_type='Mul', value_name='C', **kwargs)
+        self._A = A
+        self._B = B
+
+    # Inputs
+    @property
+    def A(self):
+        return self._A
+
+    @property
+    def B(self):
+        return self._B
+
+    # Outputs
+    @property
+    def C(self):
+        return self
 
 
 class Pad(DefaultNodeValue):
+    node_inputs = ['input', 'pads', 'constant_value']
+    node_attributes = ['mode']
+
     def __init__(self, input, pads, constant_value=None, mode=None, **kwargs):
         super().__init__(op_type='Pad', **kwargs)
         self.input = input
@@ -360,21 +396,79 @@ class Pad(DefaultNodeValue):
         self.constant_value = constant_value
         self.mode = mode
 
-    def node_input_values(self, exporter):
-        node_input_values = []
-        if exporter.opset >= 12:
-            node_input_values = [self.input, self.pads]
-            if self.constant_value:
-                return node_input_values.append(self.constant_value)
-        else:
-            raise OpNotSupportedError()
-        return node_input_values
 
-    def node_attributes(self, exporter, node_name):
-        node_attributes = {}
-        if exporter.opset >= 12:
-            if self.mode:
-                node_attributes['mode'] = self.mode
-        else:
-            raise OpNotSupportedError()
-        return node_attributes
+class Reshape(DefaultNodeValue):
+    node_inputs = ['data', 'shape']
+    node_attributes = ['allowzero']
+    node_outputs = ['reshaped']
+
+    def __init__(self, data, shape, allowzero=None, **kwargs):
+        super().__init__(op_type='Reshape', value_name='reshaped', **kwargs)
+        self.data = data
+        self.shape = shape
+        self.allowzero = allowzero
+
+    @property
+    def reshaped(self):
+        return self
+
+
+class Sigmoid(DefaultNodeValue):
+    node_inputs = ['X']
+    node_outputs = ['Y']
+
+    def __init__(self, X, **kwargs):
+        super().__init__(op_type='Sigmoid', **kwargs)
+        self.X = X
+
+    @property
+    def Y(self):
+        return self
+
+
+class Sub(DefaultNodeValue):
+    node_inputs = ['A', 'B']
+    node_outputs = ['C']
+
+    def __init__(self, A, B, **kwargs):
+        super().__init__(op_type='Sub', value_name='C', **kwargs)
+        self._A = A
+        self._B = B
+
+    # Inputs
+    @property
+    def A(self):
+        return self._A
+
+    @property
+    def B(self):
+        return self._B
+
+    # Outputs
+    @property
+    def C(self):
+        return self
+
+
+class Tanh(DefaultNodeValue):
+    node_inputs = ['input']
+    node_outputs = ['output']
+
+    def __init__(self, input, **kwargs):
+        super().__init__(op_type='Tanh', **kwargs)
+        self.input = input
+
+
+class Transpose(DefaultNodeValue):
+    node_inputs = ['data']
+    node_outputs = ['transposed']
+    node_attributes = ['perm']
+
+    def __init__(self, data, perm, **kwargs):
+        super().__init__('Transpose', value_name='transposef', **kwargs)
+        self.data = data
+        self.perm = perm
+
+    @property
+    def transposed(self):
+        return self
