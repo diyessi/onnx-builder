@@ -21,10 +21,11 @@ class OpNotSupportedError(ValueError):
 
 
 class Value:
-    def __init__(self, value_name, value_index, **kwargs):
+    def __init__(self, value_name, value_index, value_optional=False, **kwargs):
         super().__init__(**kwargs)
         self._value_name = value_name
         self._value_index = value_index
+        self._value_optional = value_optional
 
     @property
     def value_index(self):
@@ -36,7 +37,7 @@ class Value:
 
     @property
     def value_optional(self):
-        return False
+        return self._value_optional
 
     def __add__(self, other):
         return Add(self, other)
@@ -53,7 +54,6 @@ class Node:
         super().__init__(**kwargs)
         self._node_name = node_name
         self._op_type = op_type
-        self._node_outputs_used = set()
 
     @property
     def op_type(self):
@@ -63,26 +63,19 @@ class Node:
     def node_name(self):
         return self._node_name
 
-    @property
-    def node_outputs_used(self):
-        return self._node_outputs_used
+    def used_node_output_values(self, exporter, used_values):
+        return [value if (not value.value_optional or value in used_values) else None for value in self.node_output_values(exporter)]
 
-    def used_node_output_values(self, builder):
-        saved_node_outputs_used = set(self._node_outputs_used)
-        node_output_values = self.node_output_values(builder)
-        self._node_outputs_used = saved_node_outputs_used
-        return [None if value in saved_node_outputs_used else value for value in node_output_values]
-
-    def build_node(self, builder):
-        node_name = builder.builder_node_name(self)
-        input_names = [builder.builder_value_name(node_input_value)
-                       for node_input_value in self.node_input_values(builder)]
-        output_names = [builder.builder_value_name(node_output_value)
-                        for node_output_value in self.used_node_output_values(builder)]
+    def build_node(self, exporter, used_values):
+        node_name = exporter.exporter_node_name(self)
+        input_names = [exporter.exporter_value_name(node_input_value)
+                       for node_input_value in self.node_input_values(exporter)]
+        output_names = [exporter.exporter_value_name(node_output_value)
+                        for node_output_value in self.used_node_output_values(exporter, used_values)]
         return helper.make_node(
-            self.op_type, input_names, output_names, node_name, **self.node_attributes(builder, node_name))
+            self.op_type, input_names, output_names, node_name, **self.node_attributes(exporter, node_name))
 
-    def node_output_values(self, builder):
+    def node_output_values(self, exporter):
         return [self.output]
 
 
@@ -103,10 +96,10 @@ class DefaultNodeValue(Node, Value):
     def output(self):
         return self
 
-    def node_attributes(self, builder, node_name):
+    def node_attributes(self, exporter, node_name):
         return {}
 
-    def node_outputs(self, builder):
+    def node_outputs(self, exporter):
         return [self]
 
 
@@ -115,24 +108,17 @@ class SecondaryValue(Value):
     def __init__(self, value_node, value_name, value_index, optional=False, **kwargs):
         super().__init__(value_name=value_name, value_index=value_index, **kwargs)
         self._value_node = value_node
-        self._optional = optional
-        if optional:
-            self.value_node.node_outputs_used.add(self.value_index)
 
     @property
     def value_node(self):
         return self._value_node
-
-    @property
-    def value_optional(self):
-        return self._optional
 
     def __getattr__(self, name):
         return getattr(self.value_node, name)
 
 
 class Placeholder(DefaultNodeValue):
-    def __init__(self, elt_type, shape, **kwargs):
+    def __init__(self, elt_type=np.float32, shape=None, **kwargs):
         super().__init__(op_type='Placeholder', value_name='output', **kwargs)
         self._elt_type = elt_type
         self._shape = shape
@@ -150,7 +136,7 @@ class Placeholder(DefaultNodeValue):
         return self.elt_type, self.shape
 
     # Node protocol
-    def node_input_values(self, builder):
+    def node_input_values(self, exporter):
         return []
 
 
@@ -170,7 +156,7 @@ class Abs(DefaultNodeValue):
         return self
 
     # Node protocol
-    def node_input_values(self, builder):
+    def node_input_values(self, exporter):
         return [self.X]
 
 
@@ -195,7 +181,7 @@ class Add(DefaultNodeValue):
         return self
 
     # Node protocol
-    def node_input_values(self, builder):
+    def node_input_values(self, exporter):
         return [self.A, self.B]
 
 
@@ -252,22 +238,22 @@ class BatchNormalization(DefaultNodeValue):
 
     @property
     def running_mean(self):
-        return SecondaryValue(self, 'running_mean', 1, optional=True)
+        return SecondaryValue(self, 'running_mean', 1, value_optional=True)
 
     @property
     def running_var(self):
-        return SecondaryValue(self, 'running_var', 2, optional=True)
+        return SecondaryValue(self, 'running_var', 2, value_optional=True)
 
     # Node protocol
-    def node_input_values(self, builder):
-        if builder.opset >= 15:
+    def node_input_values(self, exporter):
+        if exporter.opset >= 15:
             return [self.X, self.scale, self.B, self.input_mean, self.input_var]
         else:
             raise OpNotSupportedError()
 
-    def node_attributes(self, builder, node_name):
+    def node_attributes(self, exporter, node_name):
         node_attributes = {}
-        if builder.opset >= 15:
+        if exporter.opset >= 15:
             if self.epsilon:
                 node_attributes['epsilon'] = self.epsilon
             if self.momentum:
@@ -276,8 +262,8 @@ class BatchNormalization(DefaultNodeValue):
                 node_attributes['self.training_mode'] = self.training_mode
         return node_attributes
 
-    def node_output_values(self, builder):
-        if builder.opset >= 15:
+    def node_output_values(self, exporter):
+        if exporter.opset >= 15:
             return [self.Y, self.running_mean, self.running_var]
         else:
             raise OpNotSupportedError()
@@ -293,10 +279,10 @@ class Constant(DefaultNodeValue):
         else:
             raise ValueError()
 
-    def node_input_values(self, builder):
+    def node_input_values(self, exporter):
         return []
 
-    def node_attributes(self, builder, node_name):
+    def node_attributes(self, exporter, node_name):
         value_name = self.value_name or node_name
         value = self._value
         if value.dtype is np.dtype('int64'):
@@ -333,26 +319,26 @@ class LSTM(Node):
     # Outputs
     @property
     def Y(self):
-        return SecondaryValue(self, 'Y', 0, optional=True)
+        return SecondaryValue(self, 'Y', 0, value_optional=True)
 
     @property
     def Y_h(self):
-        return SecondaryValue(self, 'Y_h', 1, optional=True)
+        return SecondaryValue(self, 'Y_h', 1, value_optional=True)
 
     @property
     def Y_c(self):
-        return SecondaryValue(self, 'Y_c', 2, optional=True)
+        return SecondaryValue(self, 'Y_c', 2, value_optional=True)
 
-    def node_input_values(self, builder):
-        if builder.opset >= 14:
+    def node_input_values(self, exporter):
+        if exporter.opset >= 14:
             inputs = [self.X, self.W, self.R]
             return _append_if(inputs, self.B, self.sequence_lens,
                               self.initial_h, self.initial_c, self.P)
         else:
             raise OpNotSupportedError()
 
-    def node_attributes(self, builder, node_name):
-        if builder.opset >= 14:
+    def node_attributes(self, exporter, node_name):
+        if exporter.opset >= 14:
             return _update_if({}, {'activation_alpha': self.activation_alpha,
                                    'activation_beta': self.activation_beta,
                                    'activations': self.activations,
@@ -362,7 +348,7 @@ class LSTM(Node):
                                    'input_forget': self.input_forget,
                                    'layout': self.layout})
 
-    def node_output_values(self, builder):
+    def node_output_values(self, exporter):
         return [self.Y, self.Y_h, self.Y_c]
 
 
@@ -374,9 +360,9 @@ class Pad(DefaultNodeValue):
         self.constant_value = constant_value
         self.mode = mode
 
-    def node_input_values(self, builder):
+    def node_input_values(self, exporter):
         node_input_values = []
-        if builder.opset >= 12:
+        if exporter.opset >= 12:
             node_input_values = [self.input, self.pads]
             if self.constant_value:
                 return node_input_values.append(self.constant_value)
@@ -384,9 +370,9 @@ class Pad(DefaultNodeValue):
             raise OpNotSupportedError()
         return node_input_values
 
-    def node_attributes(self, builder, node_name):
+    def node_attributes(self, exporter, node_name):
         node_attributes = {}
-        if builder.opset >= 12:
+        if exporter.opset >= 12:
             if self.mode:
                 node_attributes['mode'] = self.mode
         else:

@@ -6,18 +6,20 @@ ONNX ops are treated as a DSL embedded within Python. Graphs can be created and 
 ```python
     # Create two sources of data. For now ONNX graph
     # inputs need to be Placeholder
-    a = Placeholder(onnx.TensorProto.FLOAT, [32, 32])
-    b = Placeholder(onnx.TensorProto.FLOAT, [32, 32])
+    a = Placeholder()
+    b = Placeholder()
 
-    # The builder will convert a graph to ONNX
-    builder = Builder('a plus b')
-    # build needs a list of inputs and a list of outputs.
-    builder.build([builder.named('a', a),  # Export first input as 'a'
-                   builder.named('b', b)],  # Export second input as 'b'
-                  # A single output exported as 'output'
-                  # We can inline this simple graph construction
-                  [builder.named('output', Abs(a)+b)])
-    onnx.save(builder.model_def, 'a_plus_b.onnx')
+    # The exporter will convert a graph to ONNX
+    exporter = Exporter()
+    # Add two inputs
+    exporter.add_graph_input('a', a, [32, 32])
+    exporter.add_graph_input('b', b, [32, 32])
+    # Add one output
+    exporter.add_graph_output('output', Abs(a)+b)
+    # Export as ONNX
+    md = exporter.export('a plus b')
+    onnx.checker.check_model(md)
+    onnx.save(md, 'a_plus_b.onnx')
 ```
 
 ## Installation
