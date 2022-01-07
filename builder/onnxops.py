@@ -151,7 +151,7 @@ class Placeholder(DefaultNodeValue):
     node_outputs = ['output']
 
     def __init__(self, elt_type=np.float32, shape=None, **kwargs):
-        super().__init__(op_type='Placeholder', value_name='output', **kwargs)
+        super().__init__(op_type='Placeholder', **kwargs)
         self._elt_type = elt_type
         self._shape = shape
 
@@ -426,6 +426,18 @@ class Sigmoid(DefaultNodeValue):
         return self
 
 
+class Slice(DefaultNodeValue):
+    node_inputs = ['data', 'starts', 'ends', 'axes', 'steps']
+
+    def __init__(self, data, starts, ends, axes=None, steps=None, **kwargs):
+        super().__init__(op_type='Slice', **kwargs)
+        self.data = data
+        self.starts = starts
+        self.ends = ends
+        self.axes = axes
+        self.steps = steps
+
+
 class Sub(DefaultNodeValue):
     node_inputs = ['A', 'B']
     node_outputs = ['C']
@@ -457,6 +469,15 @@ class Tanh(DefaultNodeValue):
     def __init__(self, input, **kwargs):
         super().__init__(op_type='Tanh', **kwargs)
         self.input = input
+
+
+class Tile(DefaultNodeValue):
+    node_inputs = ['input', 'repeats']
+
+    def __init__(self, input, repeats, **kwargs):
+        super().__init__(op_type='Tile', **kwargs)
+        this.input = input
+        this.repeats = repeats
 
 
 class Transpose(DefaultNodeValue):

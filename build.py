@@ -3,6 +3,76 @@ import numpy as np
 from builder import *
 
 
+def make_lstm_cell(x_in, h_in, c_in, W, R, B=None):
+    Wi, Wo, Wf, Wc = W
+    Ri, Ro, Rf, Rc = R
+    Bi, Bo, Bf, Bc = B or None, None, None, None
+
+    i = MatMul(Wi, x_in)+MatMul(Ri, h_in)
+    if Bi:
+        i = i + Bi
+    i = Sigmoid(i)
+
+    o = MatMul(Wo, x_in) + MatMul(Ro, h_in)
+    if Bo:
+        o = o + Bo
+    o = Sigmoid(o)
+
+    f = MatMul(Wf, x_in) + MatMul(Rf, h_in)
+    if Bf:
+        f = f + Bf
+    f = Sigmoid(f)
+
+    c = MatMul(Wc, x_in) + MatMul(Rc, h_in)
+    if Bc:
+        c = c + BatchNormalization
+    c = Tanh(c)
+    c_out = f*c_in + i*c
+    h_out = o*Tanh(c_out)
+
+    return h_out, c_out
+
+
+def lstm_cell():
+    x_in = Placeholder()
+    h_in = Placeholder()
+    c_in = Placeholder()
+    Wi = Placeholder()
+    Wo = Placeholder()
+    Wf = Placeholder()
+    Wc = Placeholder()
+    Ri = Placeholder()
+    Ro = Placeholder()
+    Rf = Placeholder()
+    Rc = Placeholder()
+
+    h_out, c_out = make_lstm_cell(
+        x_in, h_in, c_in, (Wi, Wo, Wf, Wc), (Ri, Ro, Rf, Rc))
+
+    exporter = Exporter()
+    N = 4  # Batch size
+    C = 32  # Input word size
+    H = 16  # Hidden size
+
+    exporter.add_graph_input('x_in', x_in, [N, C])
+    exporter.add_graph_input('h_in', h_in, [N, H])
+    exporter.add_graph_input('c_in', c_in, [N, H])
+    exporter.add_graph_input('Wi', Wi, [H, C])
+    exporter.add_graph_input('Wo', Wo, [H, C])
+    exporter.add_graph_input('Wf', Wf, [H, C])
+    exporter.add_graph_input('Wc', Wc, [H, C])
+    exporter.add_graph_input('Ri', Ri, [H, H])
+    exporter.add_graph_input('Ro', Ro, [H, H])
+    exporter.add_graph_input('Rf', Rf, [H, H])
+    exporter.add_graph_input('Rc', Rc, [H, H])
+    exporter.add_graph_output('h_out', h_out)
+    exporter.add_graph_output('c_out', c_out)
+
+    md = exporter.export('LSTM cell')
+    onnx.checker.check_model(md)
+    onnx.save(md, 'lstm_cell.onnx')
+
+
 def a_plus_b():
     # Create two sources of data. For now ONNX graph
     # inputs need to be Placeholder
@@ -23,6 +93,8 @@ def a_plus_b():
 
 
 def run():
+    lstm_cell()
+    return
     a_plus_b()
     N = 4
     T = 140
