@@ -1,5 +1,6 @@
 from onnx import TensorProto, helper
 import numpy as np
+from builder.exporter import onnx_type
 
 
 def _append_if(list_, *values):
@@ -58,10 +59,10 @@ class Value:
 class Node:
     node_attributes = []
 
-    def __init__(self, op_type, node_name=None, **kwargs):
+    def __init__(self, op_type=None, node_name=None, **kwargs):
         super().__init__(**kwargs)
         self._node_name = node_name
-        self._op_type = op_type
+        self._op_type = op_type or type(self).__name__
 
     @property
     def op_type(self):
@@ -151,7 +152,7 @@ class Placeholder(DefaultNodeValue):
     node_outputs = ['output']
 
     def __init__(self, elt_type=np.float32, shape=None, **kwargs):
-        super().__init__(op_type='Placeholder', **kwargs)
+        super().__init__(**kwargs)
         self._elt_type = elt_type
         self._shape = shape
 
@@ -169,7 +170,7 @@ class Abs(DefaultNodeValue):
     node_outputs = ['Y']
 
     def __init__(self, X, **kwargs):
-        super().__init__(op_type='Abs', value_name='Y', **kwargs)
+        super().__init__(value_name='Y', **kwargs)
         self._X = X
 
     # Inputs
@@ -188,7 +189,7 @@ class Add(DefaultNodeValue):
     node_outputs = ['C']
 
     def __init__(self, A, B, **kwargs):
-        super().__init__(op_type='Add', value_name='C', **kwargs)
+        super().__init__(value_name='C', **kwargs)
         self._A = A
         self._B = B
 
@@ -213,7 +214,7 @@ class BatchNormalization(DefaultNodeValue):
     node_outputs = ['Y', 'running_mean', 'running_var']
 
     def __init__(self, X, scale, B, input_mean, input_var, epsilon=None, momentum=None, training_mode=None, **kwargs):
-        super().__init__(op_type='BatchNormalization', value_name='Y', **kwargs)
+        super().__init__(value_name='Y', **kwargs)
         self._X = X
         self._scale = scale
         self._B = B
@@ -271,14 +272,24 @@ class BatchNormalization(DefaultNodeValue):
         return SecondaryValue(self, 'running_var', 2, value_optional=True)
 
 
+class Cast(DefaultNodeValue):
+    node_inputs = ['input']
+    node_attributes = ['to']
+
+    def __init__(self, input, to, **kwargs):
+        super().__init__(**kwargs)
+        self.input = input
+        self.to = onnx_type(to)
+
+
 class Constant(DefaultNodeValue):
     node_inputs = []
 
     def __init__(self, value, dtype=None, value_name=None, **kwargs):
-        super().__init__(op_type='Constant', **kwargs)
+        super().__init__(**kwargs)
         if not type(value) is np.ndarray:
             value = np.array(value, dtype)
-        if type(value) is np.ndarray and value.dtype in {np.dtype('int64'), np.dtype('float32')}:
+        if type(value) is np.ndarray:
             self._value = value
         else:
             raise ValueError()
@@ -286,10 +297,32 @@ class Constant(DefaultNodeValue):
     def node_attribute_dict(self, exporter, node_name):
         value_name = exporter.exporter_value_name(self)
         value = self._value
-        if value.dtype is np.dtype('int64'):
-            return {'value': helper.make_tensor(name=value_name, data_type=TensorProto.INT64, dims=value.shape, vals=value.flatten().astype(np.int64))}
-        elif value.dtype is np.dtype('float32'):
-            return {'value': helper.make_tensor(name=value_name, data_type=TensorProto.FLOAT, dims=value.shape, vals=value.flatten().astype(np.float32))}
+        dtype = value.dtype
+        otype = onnx_type(dtype)
+        return {'value':helper.make_tensor(name=value_name, data_type=onnx_type(dtype), dims= value.shape, vals=value.flatten().astype(dtype))}
+
+
+class Conv(DefaultNodeValue):
+    node_inputs = ['X', 'W', 'B']
+    node_attributes = ['auto_pad', 'dilations',
+                       'group', 'kernel_shape', 'pads', 'strides']
+    node_outpus = ['Y']
+
+    def __init__(self, X, W, B=None, auto_pad=None, dilations=None, group=None, kernel_shape=None, pads=None, strides=None, **kwargs):
+        super().__init__(value_name='Y', **kwargs)
+        self.X = X
+        self.W = W
+        self.B = B
+        self.auto_pad = auto_pad
+        self.dilations = dilations
+        self.group = group
+        self.kernel_shape = kernel_shape
+        self.pads = pads
+        self.strides = strides
+
+    @property
+    def Y(self):
+        return self
 
 
 class LSTM(Node):
@@ -302,7 +335,7 @@ class LSTM(Node):
     def __init__(self, X, W, R, B=None, sequence_lens=None, initial_h=None, initial_c=None, P=None,
                  activation_alpha=None, activation_beta=None, activations=None, clip=None, direction=None, hidden_size=None,
                  input_forget=None, layout=None, **kwargs):
-        super().__init__(op_type='LSTM')
+        super().__init__(**kwargs)
         self.X = X
         self.W = W
         self.R = R
@@ -342,7 +375,7 @@ class MatMul(DefaultNodeValue):
     node_outputs = ['Y']
 
     def __init__(self, A, B, **kwargs):
-        super().__init__(op_type='MatMul', value_name='Y', **kwargs)
+        super().__init__(value_name='Y', **kwargs)
         self._A = A
         self._B = B
 
@@ -366,7 +399,7 @@ class Mul(DefaultNodeValue):
     node_outputs = ['C']
 
     def __init__(self, A, B, **kwargs):
-        super().__init__(op_type='Mul', value_name='C', **kwargs)
+        super().__init__(value_name='C', **kwargs)
         self._A = A
         self._B = B
 
@@ -390,11 +423,24 @@ class Pad(DefaultNodeValue):
     node_attributes = ['mode']
 
     def __init__(self, input, pads, constant_value=None, mode=None, **kwargs):
-        super().__init__(op_type='Pad', **kwargs)
+        super().__init__(**kwargs)
         self.input = input
         self.pads = pads
         self.constant_value = constant_value
         self.mode = mode
+
+
+class Relu(DefaultNodeValue):
+    node_inputs = ['X']
+    node_outputs = ['Y']
+
+    def __init__(self, X, **kwargs):
+        super().__init__(**kwargs)
+        self.X = X
+
+    @property
+    def Y(self):
+        return self
 
 
 class Reshape(DefaultNodeValue):
@@ -403,7 +449,7 @@ class Reshape(DefaultNodeValue):
     node_outputs = ['reshaped']
 
     def __init__(self, data, shape, allowzero=None, **kwargs):
-        super().__init__(op_type='Reshape', value_name='reshaped', **kwargs)
+        super().__init__(value_name='reshaped', **kwargs)
         self.data = data
         self.shape = shape
         self.allowzero = allowzero
@@ -418,7 +464,7 @@ class Sigmoid(DefaultNodeValue):
     node_outputs = ['Y']
 
     def __init__(self, X, **kwargs):
-        super().__init__(op_type='Sigmoid', **kwargs)
+        super().__init__(**kwargs)
         self.X = X
 
     @property
@@ -430,7 +476,7 @@ class Slice(DefaultNodeValue):
     node_inputs = ['data', 'starts', 'ends', 'axes', 'steps']
 
     def __init__(self, data, starts, ends, axes=None, steps=None, **kwargs):
-        super().__init__(op_type='Slice', **kwargs)
+        super().__init__(**kwargs)
         self.data = data
         self.starts = starts
         self.ends = ends
@@ -443,7 +489,7 @@ class Sub(DefaultNodeValue):
     node_outputs = ['C']
 
     def __init__(self, A, B, **kwargs):
-        super().__init__(op_type='Sub', value_name='C', **kwargs)
+        super().__init__(value_name='C', **kwargs)
         self._A = A
         self._B = B
 
@@ -467,7 +513,7 @@ class Tanh(DefaultNodeValue):
     node_outputs = ['output']
 
     def __init__(self, input, **kwargs):
-        super().__init__(op_type='Tanh', **kwargs)
+        super().__init__(**kwargs)
         self.input = input
 
 
@@ -486,7 +532,7 @@ class Transpose(DefaultNodeValue):
     node_attributes = ['perm']
 
     def __init__(self, data, perm, **kwargs):
-        super().__init__('Transpose', value_name='transposef', **kwargs)
+        super().__init__(value_name='transposef', **kwargs)
         self.data = data
         self.perm = perm
 

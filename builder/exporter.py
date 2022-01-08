@@ -24,7 +24,18 @@ _type_conversion = {
     float: TensorProto.DOUBLE,
     int: TensorProto.INT64,
     complex: TensorProto.COMPLEX128,
+    np.dtype('int8'): TensorProto.INT8,
+    np.dtype('uint8') : TensorProto.UINT8,
+    np.dtype('int16'): TensorProto.INT16,
+    np.dtype('uint16') : TensorProto.UINT16,
+    np.dtype('int32'):  TensorProto.INT32,
+    np.dtype('int64'):  TensorProto.INT64,
+    np.dtype('float32'):  TensorProto.FLOAT,
 }
+
+
+def onnx_type(typ):
+    return _type_conversion.get(typ, TensorProto.UNDEFINED)
 
 
 class Exporter:
