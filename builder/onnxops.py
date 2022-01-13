@@ -299,7 +299,7 @@ class Constant(DefaultNodeValue):
         value = self._value
         dtype = value.dtype
         otype = onnx_type(dtype)
-        return {'value':helper.make_tensor(name=value_name, data_type=onnx_type(dtype), dims= value.shape, vals=value.flatten().astype(dtype))}
+        return {'value': helper.make_tensor(name=value_name, data_type=onnx_type(dtype), dims=value.shape, vals=value.flatten().astype(dtype))}
 
 
 class Conv(DefaultNodeValue):
@@ -416,6 +416,18 @@ class Mul(DefaultNodeValue):
     @property
     def C(self):
         return self
+
+
+class OneHot(DefaultNodeValue):
+    node_inputs = ['indices', 'depth', 'values']
+    node_attributes = ['axis']
+
+    def __init__(self, indices, depth, values, axis=None, **kwargs):
+        super().__init__(**kwargs)
+        self.indices = indices
+        self.depth = depth
+        self.values = values
+        self.axis = axis
 
 
 class Pad(DefaultNodeValue):

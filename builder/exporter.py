@@ -31,6 +31,7 @@ _type_conversion = {
     np.dtype('int32'):  TensorProto.INT32,
     np.dtype('int64'):  TensorProto.INT64,
     np.dtype('float32'):  TensorProto.FLOAT,
+    np.dtype('float64'): TensorProto.DOUBLE,
 }
 
 

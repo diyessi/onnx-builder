@@ -5,6 +5,7 @@ from builder.onnxops import BatchNormalization
 from builder.onnxops import Cast, Constant, Conv
 from builder.onnxops import LSTM
 from builder.onnxops import MatMul, Mul
+from builder.onnxops import OneHot
 from builder.onnxops import Pad, Placeholder
 from builder.onnxops import Relu, Reshape
 from builder.onnxops import Sigmoid, Slice, Sub
@@ -16,6 +17,7 @@ __all__ = ['Exporter',
            'Cast', 'Constant', 'Conv',
            'LSTM',
            'MatMul', 'Mul',
+           'OneHot',
            'Pad',
            'Relu', 'Reshape',
            'Sigmoid', 'Slice', 'Sub',
