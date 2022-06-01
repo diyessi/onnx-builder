@@ -91,7 +91,6 @@ def a_plus_b():
     onnx.checker.check_model(md)
     onnx.save(md, 'a_plus_b.onnx')
 
-
 def run():
     lstm_cell()
     return

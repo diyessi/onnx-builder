@@ -87,11 +87,9 @@ class Node:
     def node_input_values(self, exporter):
         result = []
         for name in self.__class__.node_inputs:
-            value = getattr(self, name)
-            if value:
-                result.append(value)
-            else:
-                break
+            result.append(getattr(self, name))
+        while result and not result[-1]:
+            result.pop()
         return result
 
     def node_attribute_dict(self, exporter, node_name):
@@ -394,6 +392,36 @@ class MatMul(DefaultNodeValue):
         return self
 
 
+class Mod(DefaultNodeValue):
+    node_inputs = ['A', 'B']
+    node_attributes = ['fmod']
+    node_outputs = ['C']
+
+    def __init__(self, A, B, fmod=None, **kwargs):
+        super().__init__(value_name='C', **kwargs)
+        self._A = A
+        self._B = B
+        self.fmod = fmod
+
+    # Inputs
+    @property
+    def A(self):
+        return self._A
+
+    @property
+    def B(self):
+        return self._B
+
+    @property
+    def fmod(self):
+        return self.fmod
+
+    # Outputs
+    @property
+    def C(self):
+        return self
+
+
 class Mul(DefaultNodeValue):
     node_inputs = ['A', 'B']
     node_outputs = ['C']
@@ -471,6 +499,37 @@ class Reshape(DefaultNodeValue):
         return self
 
 
+class Resize(DefaultNodeValue):
+    node_inputs = ['X', 'roi', 'scales', 'sizes']
+    node_attributes = ['coordinate_transformation_mode', 'cubic_coeff_a', 'exclude_outside',
+                       'extrapolation_value', 'mode', 'nearest_mode']
+    node_outputs = ['Y']
+
+    def __init__(self, X, roi=None, scales=None, sizes=None,
+                 coordinate_transformation_mode=None, cubic_coeff_a=None, exclude_outside=None,
+                 extrapolation_value=None, mode=None, nearest_mode=None, **kwargs):
+        super().__init__(value_name = 'Y', **kwargs)
+        self.X = X
+        self.roi = roi
+        self.scales = scales
+        self.sizes = sizes
+        self.coordinate_transformation_mode = coordinate_transformation_mode
+        self.cubic_coeff_a = cubic_coeff_a
+        self.exclude_outside = exclude_outside
+        self.extrapolation_value = extrapolation_value
+        self.mode = mode
+        self.nearest_mode = nearest_mode
+
+    # Inputs exposed above
+    # Attributes exposed above
+
+    # Outputs
+
+    @property
+    def Y(self):
+        return self
+
+
 class Sigmoid(DefaultNodeValue):
     node_inputs = ['X']
     node_outputs = ['Y']
@@ -544,7 +603,7 @@ class Transpose(DefaultNodeValue):
     node_attributes = ['perm']
 
     def __init__(self, data, perm, **kwargs):
-        super().__init__(value_name='transposef', **kwargs)
+        super().__init__(value_name='transposed', **kwargs)
         self.data = data
         self.perm = perm
 

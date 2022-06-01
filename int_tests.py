@@ -49,8 +49,24 @@ def onehot_tests():
     onnx.save(md, f'{fname}.onnx')
 
 
+def resize_test():
+    X = Placeholder()
+    Y = Resize(X,
+               scales=Constant(np.asarray([1, 1, 2, 2], dtype=np.float32)), coordinate_transformation_mode="half_pixel",
+               mode="nearest", nearest_mode="round_prefer_ceil")
+    b = Exporter()
+    b.add_graph_input('in', X, [1, 1, 2, 2])
+    b.add_graph_output('Y', Y)
+    md = b.export('Resize test')
+    fname = 'resizeHalfPixelNearestCeil'
+    with open(f'{fname}.onnxtxt', 'w') as f:
+        f.write(str(md))
+    onnx.save(md, f'{fname}.onnx')
+
+
 def run():
-    onehot_tests()
+    resize_test()
+    # onehot_tests()
     # convert_tests()
 
 if __name__ == "__main__":

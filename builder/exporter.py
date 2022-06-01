@@ -74,11 +74,12 @@ class Exporter:
                 continue
             ready = True
             for node_input_value in last.node_input_values(self):
-                self.used_values.add(node_input_value)
-                if node_input_value.value_node in done:
-                    continue
-                todo.append(node_input_value.value_node)
-                ready = False
+                if node_input_value:
+                    self.used_values.add(node_input_value)
+                    if node_input_value.value_node in done:
+                        continue
+                    todo.append(node_input_value.value_node)
+                    ready = False
             if not ready:
                 continue
             nodes.append(last)
