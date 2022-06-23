@@ -47,8 +47,10 @@ class Exporter:
         self._inputs = []
         self._outputs = []
 
-        # list of input value info
+        # lists of value info
         self._inputs_vi = []
+        self._outputs_vi = []
+
 
         # value -> value name map
         self._name_for_value = {}
@@ -86,13 +88,6 @@ class Exporter:
             done.add(last)
             todo.pop()
 
-        outputs_vi = []
-        for output in self._outputs:
-            name = self.exporter_value_name(output)
-            tvi = helper.make_tensor_value_info(
-                name, TensorProto.UNDEFINED, [])
-            outputs_vi.append(tvi)
-
         node_defs = []
         for node in nodes:
             node_defs.append(node.build_node(self, self.used_values))
@@ -101,7 +96,7 @@ class Exporter:
             node_defs,
             model_name,
             self._inputs_vi,
-            outputs_vi)
+            self._outputs_vi)
         return helper.make_model(graph_def,
                                  producer_name='ONNX Builder')
 
@@ -147,7 +142,7 @@ class Exporter:
         self._value_names.add(name)
         return name
 
-    def add_graph_input(self, name, input, shape=None, elt_type=None):
+    def add_graph_input(self, name, input, elt_type=None, shape=None):
         """Add a graph input"""
         value_name = self.exporter_value_name(input, name)
         elt_type = elt_type or input.elt_type
@@ -158,8 +153,13 @@ class Exporter:
         self._inputs_vi.append(tvi)
         return self
 
-    def add_graph_output(self, name, output):
+    def add_graph_output(self, name, output, elt_type=None, shape=None):
         """Add a graph output"""
         # Capture the name
-        self.exporter_value_name(output, name)
+        value_name = self.exporter_value_name(output, name)
+        elt_type = _type_conversion.get(elt_type, elt_type)
+        tvi = helper.make_tensor_value_info(value_name, elt_type, shape)
         self._outputs.append(output)
+        self._outputs_vi.append(tvi)
+        return self
+        

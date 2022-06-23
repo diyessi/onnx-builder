@@ -12,10 +12,10 @@ ONNX ops are treated as a DSL embedded within Python. Graphs can be created and 
     # The exporter will convert a graph to ONNX
     exporter = Exporter()
     # Add two inputs
-    exporter.add_graph_input('a', a, [32, 32])
-    exporter.add_graph_input('b', b, [32, 32])
+    exporter.add_graph_input('a', a, np.float32, [32, 32])
+    exporter.add_graph_input('b', b, np.float32, [32, 32])
     # Add one output
-    exporter.add_graph_output('output', Abs(a)+b)
+    exporter.add_graph_output('output', Abs(a)+b, np.float32)
     # Export as ONNX
     md = exporter.export('a plus b')
     onnx.checker.check_model(md)

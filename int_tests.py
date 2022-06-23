@@ -22,8 +22,8 @@ def convert_tests():
         exporter = Exporter()
         exporter.add_graph_input('data',
                                  input,
-                                 shape=[1, 2, 2, 2],
-                                 elt_type=typ)
+                                 typ,
+                                 shape=[1, 2, 2, 2])
         exporter.add_graph_output('output', Cast(input, np.float32))
         md = exporter.export(f'{typ.__name__}_to_float')
         fname = f'cast{camel_name(typ)}ToFloat'
@@ -37,15 +37,30 @@ def onehot_tests():
     depth = Constant(np.asarray(4, dtype=np.int64))
 
     exporter = Exporter()
-    exporter.add_graph_input('indices', indices)
-    exporter.add_graph_output('a', OneHot(indices, depth, values))
-    exporter.add_graph_output('a0', OneHot(indices, depth, values, 0))
-    exporter.add_graph_output('a1', OneHot(indices, depth, values, 1))
-    exporter.add_graph_output('a2', OneHot(indices, depth, values, 2))
+    exporter.add_graph_input('indices', np.int64, indices)
+    exporter.add_graph_output('a', OneHot(indices, depth, values), np.float32)
+    exporter.add_graph_output('a0', OneHot(indices, depth, values, 0), np.float32)
+    exporter.add_graph_output('a1', OneHot(indices, depth, values, 1), np.float32)
+    exporter.add_graph_output('a2', OneHot(indices, depth, values, 2), np.float32)
     md = exporter.export('OneHot Test')
     fname = 'oneHot'
     with open(f'{fname}.onnxtxt', 'w') as f:
         f.write(str(md))
+    onnx.save(md, f'{fname}.onnx')
+
+
+def jresize_test():
+    X = Placeholder(np.float32, shape=[1, 1, 4, 4, 3])
+
+def add_test():
+    X = Placeholder()
+    Y = Placeholder()
+    b = Exporter()
+    b.add_graph_input('x', X, np.float32, [4])
+    b.add_graph_input('y', Y, np.float32, [4])
+    b.add_graph_output('Z', X+Y, np.float32)
+    md = b.export('Add test')
+    fname = 'add'
     onnx.save(md, f'{fname}.onnx')
 
 
@@ -55,8 +70,8 @@ def resize_test():
                scales=Constant(np.asarray([1, 1, 2, 2], dtype=np.float32)), coordinate_transformation_mode="half_pixel",
                mode="nearest", nearest_mode="round_prefer_ceil")
     b = Exporter()
-    b.add_graph_input('in', X, [1, 1, 2, 2])
-    b.add_graph_output('Y', Y)
+    b.add_graph_input('in', X, np.float32, [1, 1, 2, 2])
+    b.add_graph_output('Y', Y, np.float32)
     md = b.export('Resize test')
     fname = 'resizeHalfPixelNearestCeil'
     with open(f'{fname}.onnxtxt', 'w') as f:
@@ -65,7 +80,8 @@ def resize_test():
 
 
 def run():
-    resize_test()
+    add_test()
+    # resize_test()
     # onehot_tests()
     # convert_tests()
 

@@ -1,4 +1,5 @@
 .venv
+.env
 *.onnx
 *.onnxtxt
 __pycache__
