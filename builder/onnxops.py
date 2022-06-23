@@ -374,22 +374,38 @@ class MatMul(DefaultNodeValue):
 
     def __init__(self, A, B, **kwargs):
         super().__init__(value_name='Y', **kwargs)
-        self._A = A
-        self._B = B
-
-    # Inputs
-    @property
-    def A(self):
-        return self._A
-
-    @property
-    def B(self):
-        return self._B
+        self.A = A
+        self.B = B
 
     # Outputs
     @property
     def Y(self):
         return self
+
+
+class MaxPool(DefaultNodeValue):
+    node_input = ['X']
+    node_attributes = ['auto_pad', 'ceil_mode', 'dilations', 'kernel_shape', 'pads', 'storage_order', 'strides']
+    node_outputs = ['Y', 'Indices']
+    
+    def __init__(self, X, auto_pad=None, ceil_mode=None, dilations=None, kernel_shape=None, pads=None, storage_order=None, strides=None, **kwargs):
+        super().__init__(value_name='Y', **kwargs)
+        self.X = X
+        self.auto_pad = auto_pad
+        self.ceil_mode = ceil_mode
+        self.dilations = dilations
+        self.kernel_shape = kernel_shape
+        self.pads = pads
+        self.storage_order = storage_order
+        self.strides = strides
+
+    @property
+    def Y(self):
+        return self
+
+    @property
+    def Indices(self):
+        return SecondaryValue(self, 'Indices', 1, value_optional=True)
 
 
 class Mod(DefaultNodeValue):
