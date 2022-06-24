@@ -153,7 +153,7 @@ class Exporter:
         self._inputs_vi.append(tvi)
         return self
 
-    def add_graph_output(self, name, output, elt_type=None, shape=None):
+    def add_graph_output(self, name, output, elt_type=None, shape='*'):
         """Add a graph output"""
         # Capture the name
         value_name = self.exporter_value_name(output, name)

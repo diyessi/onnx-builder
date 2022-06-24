@@ -151,16 +151,8 @@ class Placeholder(DefaultNodeValue):
 
     def __init__(self, elt_type=np.float32, shape=None, **kwargs):
         super().__init__(**kwargs)
-        self._elt_type = elt_type
-        self._shape = shape
-
-    @property
-    def elt_type(self):
-        return self._elt_type
-
-    @property
-    def shape(self):
-        return self._shape
+        self.elt_type = elt_type
+        self.shape = shape
 
 
 class Abs(DefaultNodeValue):
@@ -169,12 +161,7 @@ class Abs(DefaultNodeValue):
 
     def __init__(self, X, **kwargs):
         super().__init__(value_name='Y', **kwargs)
-        self._X = X
-
-    # Inputs
-    @property
-    def X(self):
-        return self._X
+        self.X = X
 
     # Outputs
     @property
@@ -188,17 +175,8 @@ class Add(DefaultNodeValue):
 
     def __init__(self, A, B, **kwargs):
         super().__init__(value_name='C', **kwargs)
-        self._A = A
-        self._B = B
-
-    # Inputs
-    @property
-    def A(self):
-        return self._A
-
-    @property
-    def B(self):
-        return self._B
+        self.A = A
+        self.B = B
 
     # Outputs
     @property
@@ -211,50 +189,16 @@ class BatchNormalization(DefaultNodeValue):
     node_attributes = ['epsilon', 'momentum', 'training_mode']
     node_outputs = ['Y', 'running_mean', 'running_var']
 
-    def __init__(self, X, scale, B, input_mean, input_var, epsilon=None, momentum=None, training_mode=None, **kwargs):
+    def __init__(self, X, scale, B, input_mean, input_var, *, epsilon=None, momentum=None, training_mode=None, **kwargs):
         super().__init__(value_name='Y', **kwargs)
-        self._X = X
-        self._scale = scale
-        self._B = B
-        self._input_mean = input_mean
-        self._input_var = input_var
-        self._epsilon = epsilon
-        self._momentum = momentum
-        self._training_mode = training_mode
-
-    # Inputs
-    @property
-    def X(self):
-        return self._X
-
-    @property
-    def scale(self):
-        return self._scale
-
-    @property
-    def B(self):
-        return self._B
-
-    @property
-    def input_mean(self):
-        return self._input_mean
-
-    @property
-    def input_var(self):
-        return self._input_var
-
-    # Attributes
-    @property
-    def epsilon(self):
-        return self._epsilon
-
-    @property
-    def momentum(self):
-        return self._momentum
-
-    @property
-    def training_mode(self):
-        return self._training_mode
+        self.X = X
+        self.scale = scale
+        self.B = B
+        self.input_mean = input_mean
+        self.input_var = input_var
+        self.epsilon = epsilon
+        self.momentum = momentum
+        self.training_mode = training_mode
 
     # Outputs
     @property
@@ -415,22 +359,9 @@ class Mod(DefaultNodeValue):
 
     def __init__(self, A, B, fmod=None, **kwargs):
         super().__init__(value_name='C', **kwargs)
-        self._A = A
-        self._B = B
+        self.A = A
+        self.B = B
         self.fmod = fmod
-
-    # Inputs
-    @property
-    def A(self):
-        return self._A
-
-    @property
-    def B(self):
-        return self._B
-
-    @property
-    def fmod(self):
-        return self.fmod
 
     # Outputs
     @property
@@ -444,17 +375,8 @@ class Mul(DefaultNodeValue):
 
     def __init__(self, A, B, **kwargs):
         super().__init__(value_name='C', **kwargs)
-        self._A = A
-        self._B = B
-
-    # Inputs
-    @property
-    def A(self):
-        return self._A
-
-    @property
-    def B(self):
-        return self._B
+        self.A = A
+        self.B = B
 
     # Outputs
     @property
@@ -577,17 +499,8 @@ class Sub(DefaultNodeValue):
 
     def __init__(self, A, B, **kwargs):
         super().__init__(value_name='C', **kwargs)
-        self._A = A
-        self._B = B
-
-    # Inputs
-    @property
-    def A(self):
-        return self._A
-
-    @property
-    def B(self):
-        return self._B
+        self.A = A
+        self.B = B
 
     # Outputs
     @property
@@ -609,8 +522,8 @@ class Tile(DefaultNodeValue):
 
     def __init__(self, input, repeats, **kwargs):
         super().__init__(op_type='Tile', **kwargs)
-        this.input = input
-        this.repeats = repeats
+        self.input = input
+        self.repeats = repeats
 
 
 class Transpose(DefaultNodeValue):
