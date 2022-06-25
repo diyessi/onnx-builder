@@ -328,7 +328,7 @@ class MatMul(DefaultNodeValue):
 
 
 class MaxPool(DefaultNodeValue):
-    node_input = ['X']
+    node_inputs = ['X']
     node_attributes = ['auto_pad', 'ceil_mode', 'dilations', 'kernel_shape', 'pads', 'storage_order', 'strides']
     node_outputs = ['Y', 'Indices']
     
