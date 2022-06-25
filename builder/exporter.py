@@ -97,7 +97,12 @@ class Exporter:
             model_name,
             self._inputs_vi,
             self._outputs_vi)
+
+        op = onnx.OperatorSetIdProto()
+        op.version = 16
+
         return helper.make_model(graph_def,
+                                 opset_imports=[op],
                                  producer_name='ONNX Builder')
 
     def _take_node_name(self, node, node_name):
