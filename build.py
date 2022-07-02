@@ -91,7 +91,23 @@ def a_plus_b():
     onnx.checker.check_model(md)
     onnx.save(md, 'a_plus_b.onnx')
 
+def test_concat():
+    a = Placeholder()
+    b = Placeholder();
+    exporter = Exporter()
+    # Add two inputs
+    exporter.add_graph_input('a', a, np.float32, [32, 32])
+    exporter.add_graph_input('b', b, np.float32, [32, 32])
+    # Add one output
+    exporter.add_graph_output('output', Concat(a, b, a, a, b, axis=1), np.float32)
+    # Export as ONNX
+    md = exporter.export('concat')
+    onnx.checker.check_model(md)
+    onnx.save(md, 'concat.onnx')
+
+
 def run():
+    test_concat()
     lstm_cell()
     return
     a_plus_b()

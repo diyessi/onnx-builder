@@ -2,7 +2,7 @@ from builder.exporter import Exporter
 from builder.onnxops import Placeholder
 from builder.onnxops import Abs, Add
 from builder.onnxops import BatchNormalization
-from builder.onnxops import Cast, Constant, Conv
+from builder.onnxops import Cast, Concat, Constant, Conv
 from builder.onnxops import LSTM
 from builder.onnxops import MatMul, MaxPool, Mod, Mul
 from builder.onnxops import OneHot
@@ -14,7 +14,7 @@ __all__ = ['Exporter',
            'Placeholder',
            'Abs', 'Add',
            'BatchNormalization',
-           'Cast', 'Constant', 'Conv',
+           'Cast', 'Concat', 'Constant', 'Conv',
            'LSTM',
            'MatMul', 'MaxPool', 'Mod', 'Mul',
            'OneHot',

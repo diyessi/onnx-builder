@@ -1,4 +1,4 @@
-from onnx import TensorProto, helper
+import onnx
 import numpy as np
 from builder.exporter import onnx_type
 
@@ -21,24 +21,37 @@ class OpNotSupportedError(ValueError):
     pass
 
 
+class ParameterDescriptor:
+    def __init__(self, name, index, optional, variadic):
+        self.name = name
+        self.index = index
+        self.optional = optional
+        self.variadic = variadic
+
+
+class ValueDescriptor:
+    def __init__(self, name, index, optional):
+        self.name = name
+        self.index = index
+        self.optional = optional
+
+
 class Value:
-    def __init__(self, value_name, value_index, value_optional=False, **kwargs):
-        super().__init__(**kwargs)
-        self._value_name = value_name
-        self._value_index = value_index
-        self._value_optional = value_optional
+    def __init__(self, value_descriptor, *args, **kwargs):
+        super().__init__()
+        self.value_descriptor = value_descriptor
 
     @property
     def value_index(self):
-        return self._value_index
+        return self.value_descriptor.index
 
     @property
     def value_name(self):
-        return self._value_name
+        return self.value_descriptor.name
 
     @property
     def value_optional(self):
-        return self._value_optional
+        return self.value_descriptor.optional
 
     def __add__(self, other):
         return Add(self, other)
@@ -56,21 +69,60 @@ class Value:
         return hash((id(self.value_node), self.value_index))
 
 
-class Node:
-    node_attributes = []
+class Node(Value):
 
-    def __init__(self, op_type=None, node_name=None, **kwargs):
-        super().__init__(**kwargs)
-        self._node_name = node_name
-        self._op_type = op_type or type(self).__name__
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        try:
+            op_schema = onnx.defs.get_schema(cls.__name__)
+            cls.node_parameter_descriptors = [ParameterDescriptor(input.name, index, input.option == onnx.defs.OpSchema.FormalParameterOption.Optional,
+                                              input.option == onnx.defs.OpSchema.FormalParameterOption.Variadic) for index, input in enumerate(op_schema.inputs)]
+            cls.node_attributes = [
+                attribute for attribute in op_schema.attributes]
+            cls.node_value_descriptors = [ValueDescriptor(
+                output.name, index, output.option == onnx.defs.OpSchema.FormalParameterOption.Optional) for index, output in enumerate(op_schema.outputs)]
+
+        except onnx.onnx_cpp2py_export.defs.SchemaError:
+            pass
+
+    def __getattr__(self, name):
+        cls = self.__class__
+        try:
+            for value_descriptor in cls.node_value_descriptors:
+                if value_descriptor.name == name:
+                    if value_descriptor.index == 0:
+                        return self
+                    else:
+                        return SecondaryValue(self, value_descriptor)
+        except ValueError:
+            raise AttributeError(
+                f"{cls.__name__} object has no attribute '{name}'")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(
+            value_descriptor=self.__class__.node_value_descriptors[0], **kwargs)
+        for descriptor in type(self).node_parameter_descriptors:
+            if descriptor.variadic:
+                setattr(self, descriptor.name, args[descriptor.index:])
+                break
+            if descriptor.index < len(args):
+                setattr(self, descriptor.name, args[descriptor.index])
+            elif descriptor.name in kwargs:
+                setattr(self, descriptor.name, kwargs[descriptor.name])
+            else:
+                setattr(self, descriptor.name, None)
+
+        for name, value in kwargs.items():
+            if name in self.__class__.node_attributes:
+                setattr(self, name, value)
 
     @property
     def op_type(self):
-        return self._op_type
+        return type(self).__name__
 
     @property
-    def node_name(self):
-        return self._node_name
+    def value_node(self):
+        return self
 
     def used_node_output_values(self, exporter, used_values):
         return [value if (not value.value_optional or value in used_values) else None for value in self.node_output_values(exporter)]
@@ -81,13 +133,16 @@ class Node:
                        for node_input_value in self.node_input_values(exporter)]
         output_names = [exporter.exporter_value_name(node_output_value)
                         for node_output_value in self.used_node_output_values(exporter, used_values)]
-        return helper.make_node(
+        return onnx.helper.make_node(
             self.op_type, input_names, output_names, node_name, **self.node_attribute_dict(exporter, node_name))
 
     def node_input_values(self, exporter):
         result = []
-        for name in self.__class__.node_inputs:
-            result.append(getattr(self, name))
+        for descriptor in self.__class__.node_parameter_descriptors:
+            if descriptor.variadic:
+                result += getattr(self, descriptor.name)
+            else:
+                result.append(getattr(self, descriptor.name))
         while result and not result[-1]:
             result.pop()
         return result
@@ -102,8 +157,8 @@ class Node:
 
     def node_output_values(self, exporter):
         result = []
-        for name in self.__class__.node_outputs:
-            value = getattr(self, name)
+        for value_descriptor in self.__class__.node_value_descriptors:
+            value = getattr(self, value_descriptor.name)
             if value:
                 result.append(value)
             else:
@@ -111,30 +166,10 @@ class Node:
         return result
 
 
-class DefaultNodeValue(Node, Value):
-    node_outputs = ['output']
-
-    def __init__(self, value_name='output', value_index=0, node_name=None, **kwargs):
-        super().__init__(value_name=value_name,
-                         value_index=value_index, node_name=node_name, **kwargs)
-
-    @property
-    def value_node(self):
-        return self
-
-    @property
-    def value_index(self):
-        return 0
-
-    @property
-    def output(self):
-        return self
-
-
 class SecondaryValue(Value):
     # For ops that have more than one output
-    def __init__(self, value_node, value_name, value_index, optional=False, **kwargs):
-        super().__init__(value_name=value_name, value_index=value_index, **kwargs)
+    def __init__(self, value_node, value_descriptor):
+        super().__init__(value_descriptor)
         self._value_node = value_node
 
     @property
@@ -145,89 +180,40 @@ class SecondaryValue(Value):
         return getattr(self.value_node, name)
 
 
-class Placeholder(DefaultNodeValue):
-    node_inputs = []
-    node_outputs = ['output']
+class Placeholder(Node):
+    node_parameter_descriptors = []
+    node_attributes = ['elt_type', 'shape']
+    node_value_descriptors = [ValueDescriptor('output', 0, False)]
 
     def __init__(self, elt_type=np.float32, shape=None, **kwargs):
-        super().__init__(**kwargs)
-        self.elt_type = elt_type
-        self.shape = shape
+        super().__init__(elt_type=elt_type, shape=shape, **kwargs)
 
 
-class Abs(DefaultNodeValue):
-    node_inputs = ['X']
-    node_outputs = ['Y']
-
-    def __init__(self, X, **kwargs):
-        super().__init__(value_name='Y', **kwargs)
-        self.X = X
-
-    # Outputs
-    @property
-    def Y(self):
-        return self
+class Abs(Node):
+    pass
 
 
-class Add(DefaultNodeValue):
-    node_inputs = ['A', 'B']
-    node_outputs = ['C']
-
-    def __init__(self, A, B, **kwargs):
-        super().__init__(value_name='C', **kwargs)
-        self.A = A
-        self.B = B
-
-    # Outputs
-    @property
-    def C(self):
-        return self
+class Add(Node):
+    pass
 
 
-class BatchNormalization(DefaultNodeValue):
-    node_inputs = ['X', 'scale', 'B', 'input_mean', 'input_var']
-    node_attributes = ['epsilon', 'momentum', 'training_mode']
-    node_outputs = ['Y', 'running_mean', 'running_var']
-
-    def __init__(self, X, scale, B, input_mean, input_var, *, epsilon=None, momentum=None, training_mode=None, **kwargs):
-        super().__init__(value_name='Y', **kwargs)
-        self.X = X
-        self.scale = scale
-        self.B = B
-        self.input_mean = input_mean
-        self.input_var = input_var
-        self.epsilon = epsilon
-        self.momentum = momentum
-        self.training_mode = training_mode
-
-    # Outputs
-    @property
-    def Y(self):
-        return self
-
-    @property
-    def running_mean(self):
-        return SecondaryValue(self, 'running_mean', 1, value_optional=True)
-
-    @property
-    def running_var(self):
-        return SecondaryValue(self, 'running_var', 2, value_optional=True)
+class BatchNormalization(Node):
+    pass
 
 
-class Cast(DefaultNodeValue):
-    node_inputs = ['input']
-    node_attributes = ['to']
+class Cast(Node):
 
     def __init__(self, input, to, **kwargs):
-        super().__init__(**kwargs)
-        self.input = input
-        self.to = onnx_type(to)
+        super().__init__(input, to=onnx_type(to), **kwargs)
 
 
-class Constant(DefaultNodeValue):
-    node_inputs = []
+class Concat(Node):
+    pass
 
-    def __init__(self, value, dtype=None, value_name=None, **kwargs):
+
+class Constant(Node):
+
+    def __init__(self, value, dtype=None, **kwargs):
         super().__init__(**kwargs)
         if not type(value) is np.ndarray:
             value = np.array(value, dtype)
@@ -241,301 +227,72 @@ class Constant(DefaultNodeValue):
         value = self._value
         dtype = value.dtype
         otype = onnx_type(dtype)
-        return {'value': helper.make_tensor(name=value_name, data_type=onnx_type(dtype), dims=value.shape, vals=value.flatten().astype(dtype))}
+        return {'value': onnx.helper.make_tensor(name=value_name, data_type=onnx_type(dtype), dims=value.shape, vals=value.flatten().astype(dtype))}
 
 
-class Conv(DefaultNodeValue):
-    node_inputs = ['X', 'W', 'B']
-    node_attributes = ['auto_pad', 'dilations',
-                       'group', 'kernel_shape', 'pads', 'strides']
-    node_outpus = ['Y']
-
-    def __init__(self, X, W, B=None, auto_pad=None, dilations=None, group=None, kernel_shape=None, pads=None, strides=None, **kwargs):
-        super().__init__(value_name='Y', **kwargs)
-        self.X = X
-        self.W = W
-        self.B = B
-        self.auto_pad = auto_pad
-        self.dilations = dilations
-        self.group = group
-        self.kernel_shape = kernel_shape
-        self.pads = pads
-        self.strides = strides
-
-    @property
-    def Y(self):
-        return self
+class Conv(Node):
+    pass
 
 
 class LSTM(Node):
-    node_inputs = ['X', 'W', 'R', 'B',
-                   'sequence_lens', 'initial_h', 'initial_c', 'P']
-    node_attributes = ['activation_alpha', 'activation_beta', 'activations',
-                       'clip', 'direction', 'hidden_size', 'input_forget', 'layout']
-    node_outputs = ['Y', 'Y_h', 'Y_c']
-
-    def __init__(self, X, W, R, B=None, sequence_lens=None, initial_h=None, initial_c=None, P=None,
-                 activation_alpha=None, activation_beta=None, activations=None, clip=None, direction=None, hidden_size=None,
-                 input_forget=None, layout=None, **kwargs):
-        super().__init__(**kwargs)
-        self.X = X
-        self.W = W
-        self.R = R
-        self.B = B
-        self.sequence_lens = sequence_lens
-        self.initial_h = initial_h
-        self.initial_c = initial_c
-        self.P = P
-        self.activation_alpha = activation_alpha
-        self.activation_beta = activation_beta
-        self.activations = activations
-        self.clip = clip
-        self.direction = direction
-        self.hidden_size = hidden_size
-        self.input_forget = input_forget
-        self.layout = layout
-
-    # Inputs exposed above
-    # Attributes exposed above
-
-    # Outputs
-    @property
-    def Y(self):
-        return SecondaryValue(self, 'Y', 0, value_optional=True)
-
-    @property
-    def Y_h(self):
-        return SecondaryValue(self, 'Y_h', 1, value_optional=True)
-
-    @property
-    def Y_c(self):
-        return SecondaryValue(self, 'Y_c', 2, value_optional=True)
+    pass
 
 
-class MatMul(DefaultNodeValue):
-    node_inputs = ['A', 'B']
-    node_outputs = ['Y']
-
-    def __init__(self, A, B, **kwargs):
-        super().__init__(value_name='Y', **kwargs)
-        self.A = A
-        self.B = B
-
-    # Outputs
-    @property
-    def Y(self):
-        return self
+class MatMul(Node):
+    pass
 
 
-class MaxPool(DefaultNodeValue):
-    node_inputs = ['X']
-    node_attributes = ['auto_pad', 'ceil_mode', 'dilations', 'kernel_shape', 'pads', 'storage_order', 'strides']
-    node_outputs = ['Y', 'Indices']
-    
-    def __init__(self, X, auto_pad=None, ceil_mode=None, dilations=None, kernel_shape=None, pads=None, storage_order=None, strides=None, **kwargs):
-        super().__init__(value_name='Y', **kwargs)
-        self.X = X
-        self.auto_pad = auto_pad
-        self.ceil_mode = ceil_mode
-        self.dilations = dilations
-        self.kernel_shape = kernel_shape
-        self.pads = pads
-        self.storage_order = storage_order
-        self.strides = strides
-
-    @property
-    def Y(self):
-        return self
-
-    @property
-    def Indices(self):
-        return SecondaryValue(self, 'Indices', 1, value_optional=True)
+class MaxPool(Node):
+    pass
 
 
-class Mod(DefaultNodeValue):
-    node_inputs = ['A', 'B']
-    node_attributes = ['fmod']
-    node_outputs = ['C']
-
-    def __init__(self, A, B, fmod=None, **kwargs):
-        super().__init__(value_name='C', **kwargs)
-        self.A = A
-        self.B = B
-        self.fmod = fmod
-
-    # Outputs
-    @property
-    def C(self):
-        return self
+class Mod(Node):
+    pass
 
 
-class Mul(DefaultNodeValue):
-    node_inputs = ['A', 'B']
-    node_outputs = ['C']
-
-    def __init__(self, A, B, **kwargs):
-        super().__init__(value_name='C', **kwargs)
-        self.A = A
-        self.B = B
-
-    # Outputs
-    @property
-    def C(self):
-        return self
+class Mul(Node):
+    pass
 
 
-class OneHot(DefaultNodeValue):
-    node_inputs = ['indices', 'depth', 'values']
-    node_attributes = ['axis']
-
-    def __init__(self, indices, depth, values, axis=None, **kwargs):
-        super().__init__(**kwargs)
-        self.indices = indices
-        self.depth = depth
-        self.values = values
-        self.axis = axis
+class OneHot(Node):
+    pass
 
 
-class Pad(DefaultNodeValue):
-    node_inputs = ['input', 'pads', 'constant_value']
-    node_attributes = ['mode']
-
-    def __init__(self, input, pads, constant_value=None, mode=None, **kwargs):
-        super().__init__(**kwargs)
-        self.input = input
-        self.pads = pads
-        self.constant_value = constant_value
-        self.mode = mode
+class Pad(Node):
+    pass
 
 
-class Relu(DefaultNodeValue):
-    node_inputs = ['X']
-    node_outputs = ['Y']
-
-    def __init__(self, X, **kwargs):
-        super().__init__(**kwargs)
-        self.X = X
-
-    @property
-    def Y(self):
-        return self
+class Relu(Node):
+    pass
 
 
-class Reshape(DefaultNodeValue):
-    node_inputs = ['data', 'shape']
-    node_attributes = ['allowzero']
-    node_outputs = ['reshaped']
-
-    def __init__(self, data, shape, allowzero=None, **kwargs):
-        super().__init__(value_name='reshaped', **kwargs)
-        self.data = data
-        self.shape = shape
-        self.allowzero = allowzero
-
-    @property
-    def reshaped(self):
-        return self
+class Reshape(Node):
+    pass
 
 
-class Resize(DefaultNodeValue):
-    node_inputs = ['X', 'roi', 'scales', 'sizes']
-    node_attributes = ['coordinate_transformation_mode', 'cubic_coeff_a', 'exclude_outside',
-                       'extrapolation_value', 'mode', 'nearest_mode']
-    node_outputs = ['Y']
-
-    def __init__(self, X, roi=None, scales=None, sizes=None,
-                 coordinate_transformation_mode=None, cubic_coeff_a=None, exclude_outside=None,
-                 extrapolation_value=None, mode=None, nearest_mode=None, **kwargs):
-        super().__init__(value_name = 'Y', **kwargs)
-        self.X = X
-        self.roi = roi
-        self.scales = scales
-        self.sizes = sizes
-        self.coordinate_transformation_mode = coordinate_transformation_mode
-        self.cubic_coeff_a = cubic_coeff_a
-        self.exclude_outside = exclude_outside
-        self.extrapolation_value = extrapolation_value
-        self.mode = mode
-        self.nearest_mode = nearest_mode
-
-    # Inputs exposed above
-    # Attributes exposed above
-
-    # Outputs
-
-    @property
-    def Y(self):
-        return self
+class Resize(Node):
+    pass
 
 
-class Sigmoid(DefaultNodeValue):
-    node_inputs = ['X']
-    node_outputs = ['Y']
-
-    def __init__(self, X, **kwargs):
-        super().__init__(**kwargs)
-        self.X = X
-
-    @property
-    def Y(self):
-        return self
+class Sigmoid(Node):
+    pass
 
 
-class Slice(DefaultNodeValue):
-    node_inputs = ['data', 'starts', 'ends', 'axes', 'steps']
-
-    def __init__(self, data, starts, ends, axes=None, steps=None, **kwargs):
-        super().__init__(**kwargs)
-        self.data = data
-        self.starts = starts
-        self.ends = ends
-        self.axes = axes
-        self.steps = steps
+class Slice(Node):
+    pass
 
 
-class Sub(DefaultNodeValue):
-    node_inputs = ['A', 'B']
-    node_outputs = ['C']
-
-    def __init__(self, A, B, **kwargs):
-        super().__init__(value_name='C', **kwargs)
-        self.A = A
-        self.B = B
-
-    # Outputs
-    @property
-    def C(self):
-        return self
+class Sub(Node):
+    pass
 
 
-class Tanh(DefaultNodeValue):
-    node_inputs = ['input']
-    node_outputs = ['output']
-
-    def __init__(self, input, **kwargs):
-        super().__init__(**kwargs)
-        self.input = input
+class Tanh(Node):
+    pass
 
 
-class Tile(DefaultNodeValue):
-    node_inputs = ['input', 'repeats']
-
-    def __init__(self, input, repeats, **kwargs):
-        super().__init__(op_type='Tile', **kwargs)
-        self.input = input
-        self.repeats = repeats
+class Tile(Node):
+    pass
 
 
-class Transpose(DefaultNodeValue):
-    node_inputs = ['data']
-    node_outputs = ['transposed']
-    node_attributes = ['perm']
-
-    def __init__(self, data, perm, **kwargs):
-        super().__init__(value_name='transposed', **kwargs)
-        self.data = data
-        self.perm = perm
-
-    @property
-    def transposed(self):
-        return self
+class Transpose(Node):
+    pass
