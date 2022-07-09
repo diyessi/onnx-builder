@@ -33,8 +33,8 @@ def convert_tests():
 
 def onehot_tests():
     indices = Placeholder(shape=[2,3,5])
-    values = Constant(np.asarray([0, 1], dtype=np.float32))
-    depth = Constant(np.asarray(4, dtype=np.int64))
+    values = np.asarray([0, 1], dtype=np.float32)
+    depth = np.asarray(4, dtype=np.int64)
 
     exporter = Exporter()
     exporter.add_graph_input('indices', np.int64, indices)
@@ -67,7 +67,7 @@ def add_test():
 def resize_test():
     X = Placeholder()
     Y = Resize(X,
-               scales=Constant(np.asarray([1, 1, 2, 2], dtype=np.float32)), coordinate_transformation_mode="half_pixel",
+               scales=np.asarray([1, 1, 2, 2], dtype=np.float32), coordinate_transformation_mode="half_pixel",
                mode="nearest", nearest_mode="round_prefer_ceil")
     b = Exporter()
     b.add_graph_input('in', X, np.float32, [1, 1, 2, 2])

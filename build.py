@@ -109,7 +109,7 @@ def test_concat():
 def run():
     test_concat()
     lstm_cell()
-    return
+
     a_plus_b()
     N = 4
     T = 140
@@ -117,17 +117,17 @@ def run():
     mean = Placeholder()
     var = Placeholder()
     BX = BatchNormalization(X,
-                            Constant([1.0, 1.0, 1.0], dtype=np.float32),
-                            Constant([0.0, 0.0, 0.0], dtype=np.float32),
+                            np.asarray([1.0, 1.0, 1.0], dtype=np.float32),
+                            np.asarray([0.0, 0.0, 0.0], dtype=np.float32),
                             mean, var)
-    vpad = Pad(BX, Constant([0, 2, 0, 0], dtype=np.int64))
-    sum = Pad(vpad + Abs(vpad), Constant([3, 3, 3, 3], dtype=np.int64))
+    vpad = Pad(BX, np.asarray([0, 2, 0, 0], dtype=np.int64))
+    sum = Pad(vpad + Abs(vpad), np.asarray([3, 3, 3, 3], dtype=np.int64))
 
     S = Placeholder()
     lens = Placeholder(np.int32)
-    CW = Constant(np.ones([1, 64, 128], dtype=np.float32))
-    CR = Constant(np.ones([1, 64, 16], dtype=np.float32))
-    CB = Constant(np.zeros([1, 128], dtype=np.float32))
+    CW = np.ones([1, 64, 128], dtype=np.float32)
+    CR = np.ones([1, 64, 16], dtype=np.float32)
+    CB = np.zeros([1, 128], dtype=np.float32)
     L = LSTM(S, CW, CR, CB, lens)
 
     b = Exporter()

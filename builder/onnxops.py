@@ -41,6 +41,18 @@ class Value:
         super().__init__()
         self.value_descriptor = value_descriptor
 
+    @staticmethod
+    def as_value(value):
+        if isinstance(value, Value):
+            return value
+        if not type(value) is np.ndarray:
+            value = np.array(value)
+        if type(value) is np.ndarray:
+            dtype = value.dtype
+            return Constant(value=onnx.helper.make_tensor(name='', data_type=onnx_type(dtype), dims=value.shape, vals=value.flatten().astype(dtype)))
+        else:
+            raise ValueError()
+
     @property
     def value_index(self):
         return self.value_descriptor.index
@@ -103,12 +115,12 @@ class Node(Value):
             value_descriptor=self.__class__.node_value_descriptors[0], **kwargs)
         for descriptor in type(self).node_parameter_descriptors:
             if descriptor.variadic:
-                setattr(self, descriptor.name, args[descriptor.index:])
+                setattr(self, descriptor.name, [Value.as_value(v) for v in args[descriptor.index:]])
                 break
             if descriptor.index < len(args):
-                setattr(self, descriptor.name, args[descriptor.index])
+                setattr(self, descriptor.name, Value.as_value(args[descriptor.index]))
             elif descriptor.name in kwargs:
-                setattr(self, descriptor.name, kwargs[descriptor.name])
+                setattr(self, descriptor.name, Value.as_value(kwargs[descriptor.name]))
             else:
                 setattr(self, descriptor.name, None)
 
@@ -133,8 +145,18 @@ class Node(Value):
                        for node_input_value in self.node_input_values(exporter)]
         output_names = [exporter.exporter_value_name(node_output_value)
                         for node_output_value in self.used_node_output_values(exporter, used_values)]
+        attributes = {}
+        for name in self.__class__.node_attributes:
+            value = getattr(self, name)
+            if isinstance(value, onnx.TensorProto):
+                value.name = exporter.exporter_value_name(self.value_node)
+            elif isinstance(value, type):
+                value = onnx_type(type)
+            if value is not None:
+                attributes[name] = value
+
         return onnx.helper.make_node(
-            self.op_type, input_names, output_names, node_name, **self.node_attribute_dict(exporter, node_name))
+            self.op_type, input_names, output_names, node_name, **attributes)
 
     def node_input_values(self, exporter):
         result = []
@@ -145,14 +167,6 @@ class Node(Value):
                 result.append(getattr(self, descriptor.name))
         while result and not result[-1]:
             result.pop()
-        return result
-
-    def node_attribute_dict(self, exporter, node_name):
-        result = {}
-        for name in self.__class__.node_attributes:
-            value = getattr(self, name)
-            if value:
-                result[name] = value
         return result
 
     def node_output_values(self, exporter):
@@ -202,33 +216,14 @@ class BatchNormalization(Node):
 
 
 class Cast(Node):
-
-    def __init__(self, input, to, **kwargs):
-        super().__init__(input, to=onnx_type(to), **kwargs)
-
+    pass
 
 class Concat(Node):
     pass
 
 
 class Constant(Node):
-
-    def __init__(self, value, dtype=None, **kwargs):
-        super().__init__(**kwargs)
-        if not type(value) is np.ndarray:
-            value = np.array(value, dtype)
-        if type(value) is np.ndarray:
-            self._value = value
-        else:
-            raise ValueError()
-
-    def node_attribute_dict(self, exporter, node_name):
-        value_name = exporter.exporter_value_name(self)
-        value = self._value
-        dtype = value.dtype
-        otype = onnx_type(dtype)
-        return {'value': onnx.helper.make_tensor(name=value_name, data_type=onnx_type(dtype), dims=value.shape, vals=value.flatten().astype(dtype))}
-
+    pass
 
 class Conv(Node):
     pass

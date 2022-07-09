@@ -76,7 +76,7 @@ class Exporter:
                 continue
             ready = True
             for node_input_value in last.node_input_values(self):
-                if node_input_value:
+                if node_input_value is not None:
                     self.used_values.add(node_input_value)
                     if node_input_value.value_node in done:
                         continue
