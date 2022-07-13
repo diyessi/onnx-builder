@@ -67,7 +67,7 @@ class Exporter:
         self.used_values.update(self._outputs)
         self.used_values.update(self._inputs)
         nodes = []
-        todo = [output.value_node for output in self._outputs]
+        todo = [output.value_node for output in self._outputs if output.value_node]
         done = set(self._inputs)
         while todo:
             last = todo[-1]
@@ -75,23 +75,19 @@ class Exporter:
                 todo.pop()
                 continue
             ready = True
-            for node_input_value in last.node_input_values(self):
+            for node_input_value in last.node_input_values():
                 if node_input_value is not None:
                     self.used_values.add(node_input_value)
-                    if node_input_value.value_node in done:
+                    if node_input_value.value_node is None or node_input_value.value_node in done:
                         continue
                     todo.append(node_input_value.value_node)
                     ready = False
-            if not ready:
-                continue
-            nodes.append(last)
-            done.add(last)
-            todo.pop()
+            if ready:
+                nodes.append(last)
+                done.add(last)
+                todo.pop()
 
-        node_defs = []
-        for node in nodes:
-            node_defs.append(node.build_node(self, self.used_values))
-
+        node_defs = [self._build_node(node) for node in nodes]
         graph_def = helper.make_graph(
             node_defs,
             model_name,
@@ -104,6 +100,21 @@ class Exporter:
         return helper.make_model(graph_def,
                                  opset_imports=[op],
                                  producer_name='ONNX Builder')
+
+    def _build_node(self, node):
+        node_name = self.exporter_node_name(node)
+        input_names = [self.exporter_value_name(node_input_value)
+                       for node_input_value in node.node_input_values()]
+        output_names = [self.exporter_value_name(value if (not value.option == onnx.defs.OpSchema.FormalParameterOption.Optional or value in self.used_values) else None)
+                        for value in node.node_output_values()]
+        attributes = node.node_attribute_values()
+        for value in attributes.values():
+            if isinstance(value, onnx.TensorProto):
+                value.name = self.exporter_value_name(node.value_node)
+
+        return onnx.helper.make_node(
+            node.op_type, input_names, output_names, node_name, **attributes)
+
 
     def _take_node_name(self, node, node_name):
         if not node_name or node_name in self._node_names:
@@ -134,7 +145,7 @@ class Exporter:
 
         if not name or name in self._value_names:
             # No name, or someone else has the requested name
-            multi_output = len(value.node_output_values(self)) > 1
+            multi_output = len(value.node_output_values()) > 1
             node_name = self.exporter_node_name(value.value_node)
             if multi_output:
                 if value.value_name:

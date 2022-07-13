@@ -124,7 +124,7 @@ def run():
     sum = Pad(vpad + Abs(vpad), np.asarray([3, 3, 3, 3], dtype=np.int64))
 
     S = Placeholder()
-    lens = Placeholder(np.int32)
+    lens = Placeholder()
     CW = np.ones([1, 64, 128], dtype=np.float32)
     CR = np.ones([1, 64, 16], dtype=np.float32)
     CB = np.zeros([1, 128], dtype=np.float32)
@@ -135,7 +135,7 @@ def run():
     b.add_graph_input('mean', mean, np.float32, [32, 32, 3])
     b.add_graph_input('var', var, np.float32, [32, 32, 3])
     b.add_graph_input('sentences', S, np.float32, [N, T, 128])
-    b.add_graph_input('seqlen', lens, np.float32, [N, T])
+    b.add_graph_input('seqlen', lens, np.int32, [N, T])
     b.add_graph_output('output', sum, np.float32)
     b.add_graph_output('running_mean', BX.running_mean, np.float32)
     b.add_graph_output('Y_h', L.Y_h, np.float32)

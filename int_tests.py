@@ -32,12 +32,12 @@ def convert_tests():
         onnx.save(md, f'{fname}.onnx')
 
 def onehot_tests():
-    indices = Placeholder(shape=[2,3,5])
+    indices = Placeholder()
     values = np.asarray([0, 1], dtype=np.float32)
     depth = np.asarray(4, dtype=np.int64)
 
     exporter = Exporter()
-    exporter.add_graph_input('indices', np.int64, indices)
+    exporter.add_graph_input('indices', indices, np.int64, [2, 3, 5])
     exporter.add_graph_output('a', OneHot(indices, depth, values), np.float32)
     exporter.add_graph_output('a0', OneHot(indices, depth, values, 0), np.float32)
     exporter.add_graph_output('a1', OneHot(indices, depth, values, 1), np.float32)
@@ -48,9 +48,6 @@ def onehot_tests():
         f.write(str(md))
     onnx.save(md, f'{fname}.onnx')
 
-
-def jresize_test():
-    X = Placeholder(np.float32, shape=[1, 1, 4, 4, 3])
 
 def add_test():
     X = Placeholder()
