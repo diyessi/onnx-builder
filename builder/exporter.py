@@ -167,7 +167,7 @@ class Exporter:
         tvi = helper.make_tensor_value_info(value_name, elt_type, shape)
         self._inputs.append(input)
         self._inputs_vi.append(tvi)
-        return self
+        return value_name
 
     def add_graph_output(self, name, output, elt_type=None, shape='*'):
         """Add a graph output"""
@@ -177,5 +177,5 @@ class Exporter:
         tvi = helper.make_tensor_value_info(value_name, elt_type, shape)
         self._outputs.append(output)
         self._outputs_vi.append(tvi)
-        return self
+        return value_name
         

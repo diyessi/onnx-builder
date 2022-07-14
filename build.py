@@ -34,37 +34,26 @@ def make_lstm_cell(x_in, h_in, c_in, W, R, B=None):
 
 
 def lstm_cell():
-    x_in = Placeholder()
-    h_in = Placeholder()
-    c_in = Placeholder()
-    Wi = Placeholder()
-    Wo = Placeholder()
-    Wf = Placeholder()
-    Wc = Placeholder()
-    Ri = Placeholder()
-    Ro = Placeholder()
-    Rf = Placeholder()
-    Rc = Placeholder()
-
-    h_out, c_out = make_lstm_cell(
-        x_in, h_in, c_in, (Wi, Wo, Wf, Wc), (Ri, Ro, Rf, Rc))
-
-    exporter = Exporter()
     N = 4  # Batch size
     C = 32  # Input word size
     H = 16  # Hidden size
 
-    exporter.add_graph_input('x_in', x_in, np.float32, [N, C])
-    exporter.add_graph_input('h_in', h_in, np.float32, [N, H])
-    exporter.add_graph_input('c_in', c_in, np.float32, [N, H])
-    exporter.add_graph_input('Wi', Wi, np.float32, [H, C])
-    exporter.add_graph_input('Wo', Wo, np.float32, [H, C])
-    exporter.add_graph_input('Wf', Wf, np.float32, [H, C])
-    exporter.add_graph_input('Wc', Wc, np.float32, [H, C])
-    exporter.add_graph_input('Ri', Ri, np.float32, [H, H])
-    exporter.add_graph_input('Ro', Ro, np.float32, [H, H])
-    exporter.add_graph_input('Rf', Rf, np.float32, [H, H])
-    exporter.add_graph_input('Rc', Rc, np.float32, [H, H])
+    exporter = Exporter()
+    x_in = Input(exporter, 'x_in', np.float32, [N, C])
+    h_in = Input(exporter,  'h_in', np.float32, [N, H])
+    c_in = Input(exporter, 'c_in', np.float32, [N, H])
+    Wi = Input(exporter, 'Wi', np.float32, [H, C])
+    Wo = Input(exporter, 'Wo', np.float32, [H, C])
+    Wf = Input(exporter, 'Wf', np.float32, [H, C])
+    Wc = Input(exporter, 'Wc', np.float32, [H, C])
+    Ri = Input(exporter, 'Ri', np.float32, [H, H])
+    Ro = Input(exporter, 'Ro', np.float32, [H, H])
+    Rf = Input(exporter, 'Rf', np.float32, [H, H])
+    Rc = Input(exporter, 'Rc', np.float32, [H, H])
+
+    h_out, c_out = make_lstm_cell(
+        x_in, h_in, c_in, (Wi, Wo, Wf, Wc), (Ri, Ro, Rf, Rc))
+
     exporter.add_graph_output('h_out', h_out, np.float32)
     exporter.add_graph_output('c_out', c_out, np.float32)
 
@@ -74,16 +63,12 @@ def lstm_cell():
 
 
 def a_plus_b():
-    # Create two sources of data. For now ONNX graph
-    # inputs need to be Placeholder
-    a = Placeholder()
-    b = Placeholder()
 
     # The exporter will convert a graph to ONNX
     exporter = Exporter()
     # Add two inputs
-    exporter.add_graph_input('a', a, np.float32, [32, 32])
-    exporter.add_graph_input('b', b, np.float32, [32, 32])
+    a = Input(exporter, 'a', np.float32, [32, 32])
+    b = Input(exporter, 'b', np.float32, [32, 32])
     # Add one output
     exporter.add_graph_output('output', Abs(a)+b, np.float32)
     # Export as ONNX
@@ -92,12 +77,10 @@ def a_plus_b():
     onnx.save(md, 'a_plus_b.onnx')
 
 def test_concat():
-    a = Placeholder()
-    b = Placeholder();
     exporter = Exporter()
     # Add two inputs
-    exporter.add_graph_input('a', a, np.float32, [32, 32])
-    exporter.add_graph_input('b', b, np.float32, [32, 32])
+    a = Input(exporter, 'a', np.float32, [32, 32])
+    b = Input(exporter, 'b', np.float32, [32, 32])
     # Add one output
     exporter.add_graph_output('output', Concat(a, b, a, a, b, axis=1), np.float32)
     # Export as ONNX
@@ -111,11 +94,14 @@ def run():
     lstm_cell()
 
     a_plus_b()
+    b = Exporter()
+
     N = 4
     T = 140
-    X = Placeholder()
-    mean = Placeholder()
-    var = Placeholder()
+    X = Input(b, 'input', np.float32, [N, 32, 32, 3])
+    mean = Input(b, 'mean', np.float32, [32, 32, 3])
+    var = Input(b, 'var',np.float32, [32, 32, 3])
+
     BX = BatchNormalization(X,
                             np.asarray([1.0, 1.0, 1.0], dtype=np.float32),
                             np.asarray([0.0, 0.0, 0.0], dtype=np.float32),
@@ -123,19 +109,13 @@ def run():
     vpad = Pad(BX, np.asarray([0, 2, 0, 0], dtype=np.int64))
     sum = Pad(vpad + Abs(vpad), np.asarray([3, 3, 3, 3], dtype=np.int64))
 
-    S = Placeholder()
-    lens = Placeholder()
+    S = Input(b, 'sentences', np.float32, [N, T, 128])
+    lens = Input(b, 'seqlen', np.int32, [N, T])
     CW = np.ones([1, 64, 128], dtype=np.float32)
     CR = np.ones([1, 64, 16], dtype=np.float32)
     CB = np.zeros([1, 128], dtype=np.float32)
     L = LSTM(S, CW, CR, CB, lens)
 
-    b = Exporter()
-    b.add_graph_input('input', X, np.float32, [N, 32, 32, 3])
-    b.add_graph_input('mean', mean, np.float32, [32, 32, 3])
-    b.add_graph_input('var', var, np.float32, [32, 32, 3])
-    b.add_graph_input('sentences', S, np.float32, [N, T, 128])
-    b.add_graph_input('seqlen', lens, np.int32, [N, T])
     b.add_graph_output('output', sum, np.float32)
     b.add_graph_output('running_mean', BX.running_mean, np.float32)
     b.add_graph_output('Y_h', L.Y_h, np.float32)

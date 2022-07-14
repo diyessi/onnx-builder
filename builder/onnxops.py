@@ -3,10 +3,6 @@ import numpy as np
 from builder.exporter import onnx_type
 
 
-class OpNotSupportedError(ValueError):
-    pass
-
-
 class Value:
     def __init__(self, value_name, *args, **kwargs):
         super().__init__()
@@ -155,19 +151,10 @@ class SecondaryValue(NodeValue):
         return getattr(self.value_node, name)
 
 
-class PlaceholderSchema:
-    def __init__(self):
-        self.inputs = []
-        self.attributes = []
-        self.outputs = []
-
-
-class Placeholder(Value):
-    op_schema = PlaceholderSchema()
-
-    def __init__(self):
-        super().__init__(value_name="")
-
+class Input(Value):
+    def __init__(self, exporter, name, elt_type=None, shape=None):
+        super().__init__(value_name=exporter.add_graph_input(name, self, elt_type=elt_type, shape=shape))
+        
 
 class Abs(Node):
     pass
