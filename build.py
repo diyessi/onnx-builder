@@ -90,10 +90,10 @@ def test_concat():
 
 
 def run():
+    a_plus_b()
     test_concat()
     lstm_cell()
 
-    a_plus_b()
     b = Exporter()
 
     N = 4

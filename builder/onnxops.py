@@ -48,7 +48,7 @@ class NodeValue(Value):
 
     @property
     def value_descriptor(self):  
-        return type(self.value_node).op_schema.outputs[self.value_index]
+        return self.value_node.op_schema.outputs[self.value_index]
 
     def __eq__(self, other):
         return self.value_node is other.value_node and self.value_index == other.value_index
@@ -57,19 +57,11 @@ class NodeValue(Value):
         return hash((id(self.value_node), self.value_index))
 
 
-class Node(Value):
-
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        try:
-            cls.op_schema = onnx.defs.get_schema(cls.__name__)
-
-        except onnx.onnx_cpp2py_export.defs.SchemaError:
-            pass
+class Node(NodeValue):
 
     def __getattr__(self, name):
         try:
-            for index, value_descriptor in enumerate(type(self).op_schema.outputs):
+            for index, value_descriptor in enumerate(self.op_schema.outputs):
                 if value_descriptor.name == name:
                     if index == 0:
                         return self
@@ -77,11 +69,14 @@ class Node(Value):
                         return SecondaryValue(self, index)
         except ValueError:
             raise AttributeError(
-                f"{type(self).__name__} object has no attribute '{name}'")
+                f"{self.op_type} object has no attribute '{name}'")
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, op_name=None, **kwargs):
+        if op_name is None:
+            op_name = type(self).__name__
+        self.op_schema = onnx.defs.get_schema(op_name)
         super().__init__(0, **kwargs)
-        for index, descriptor in enumerate(type(self).op_schema.inputs):
+        for index, descriptor in enumerate(self.op_schema.inputs):
             if descriptor.option == onnx.defs.OpSchema.FormalParameterOption.Variadic:
                 setattr(self, descriptor.name, [
                         Value.as_value(v) for v in args[index:]])
@@ -94,14 +89,14 @@ class Node(Value):
                 setattr(self, descriptor.name, None)
 
         for name, value in kwargs.items():
-            if name in type(self).op_schema.attributes:
+            if name in self.op_schema.attributes:
                 if isinstance(value, type):
                     value = onnx_type(type)
                 setattr(self, name, value)
 
     @property
     def op_type(self):
-        return type(self).__name__
+        return self.op_schema.name
 
     @property
     def value_node(self):
@@ -109,7 +104,7 @@ class Node(Value):
 
     def node_attribute_values(self):
         attributes = {}
-        for name in type(self).op_schema.attributes:
+        for name in self.op_schema.attributes:
             value = getattr(self, name)
             if value is not None:
                 attributes[name] = value
@@ -117,7 +112,7 @@ class Node(Value):
 
     def node_input_values(self):
         result = []
-        for descriptor in type(self).op_schema.inputs:
+        for descriptor in self.op_schema.inputs:
             if descriptor.option == onnx.defs.OpSchema.FormalParameterOption.Variadic:
                 result += getattr(self, descriptor.name)
             else:
@@ -128,7 +123,7 @@ class Node(Value):
 
     def node_output_values(self):
         result = []
-        for value_descriptor in type(self).op_schema.outputs:
+        for value_descriptor in self.op_schema.outputs:
             value = getattr(self, value_descriptor.name)
             if value:
                 result.append(value)
@@ -155,94 +150,10 @@ class Input(Value):
     def __init__(self, exporter, name, elt_type=None, shape=None):
         super().__init__(value_name=exporter.add_graph_input(name, self, elt_type=elt_type, shape=shape))
         
-
-class Abs(Node):
-    pass
-
-
-class Add(Node):
-    pass
+def make_op_factory(op_name):
+    return lambda *args, **kwargs : Node(*args, op_name=op_name, **kwargs)
 
 
-class BatchNormalization(Node):
-    pass
-
-
-class Cast(Node):
-    pass
-
-
-class Concat(Node):
-    pass
-
-
-class Constant(Node):
-    pass
-
-
-class Conv(Node):
-    pass
-
-
-class LSTM(Node):
-    pass
-
-
-class MatMul(Node):
-    pass
-
-
-class MaxPool(Node):
-    pass
-
-
-class Mod(Node):
-    pass
-
-
-class Mul(Node):
-    pass
-
-
-class OneHot(Node):
-    pass
-
-
-class Pad(Node):
-    pass
-
-
-class Relu(Node):
-    pass
-
-
-class Reshape(Node):
-    pass
-
-
-class Resize(Node):
-    pass
-
-
-class Sigmoid(Node):
-    pass
-
-
-class Slice(Node):
-    pass
-
-
-class Sub(Node):
-    pass
-
-
-class Tanh(Node):
-    pass
-
-
-class Tile(Node):
-    pass
-
-
-class Transpose(Node):
-    pass
+for op in ['Abs', 'Add', 'BatchNormalization', 'Cast', 'Concat',  'Constant', 'Conv', 'LSTM', 'MatMul', 'MaxPool', 'Mod',
+           'Mul', 'OneHot', 'Pad', 'Relu', 'Reshape', 'Resize', 'Sigmoid', 'Slice', 'Sub', 'Tanh', 'Tile', 'Transpose']:
+    globals()[op] = make_op_factory(op)
