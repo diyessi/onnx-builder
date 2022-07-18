@@ -3,6 +3,8 @@ import onnx
 from onnx import TensorProto
 from onnx import helper
 
+opset_version = 16
+
 _type_conversion = {
     None: TensorProto.UNDEFINED,
     np.float32: TensorProto.FLOAT,
@@ -95,7 +97,7 @@ class Exporter:
             self._outputs_vi)
 
         op = onnx.OperatorSetIdProto()
-        op.version = 16
+        op.version = opset_version
 
         return helper.make_model(graph_def,
                                  opset_imports=[op],

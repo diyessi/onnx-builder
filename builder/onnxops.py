@@ -1,6 +1,6 @@
 import onnx
 import numpy as np
-from builder.exporter import onnx_type
+from builder.exporter import onnx_type, opset_version
 
 
 class Value:
@@ -41,32 +41,13 @@ class Value:
         return Sub(self, other)
 
 
-class NodeValue(Value):
-    def __init__(self, value_index, **kwargs):
-        self.value_index = value_index
-        super().__init__(value_name=self.value_descriptor.name, **kwargs)
-
-    @property
-    def value_descriptor(self):  
-        return self.value_node.op_schema.outputs[self.value_index]
-
-    def __eq__(self, other):
-        return self.value_node is other.value_node and self.value_index == other.value_index
-
-    def __hash__(self):
-        return hash((id(self.value_node), self.value_index))
-
-
-class Node(NodeValue):
+class Node:
 
     def __getattr__(self, name):
         try:
             for index, value_descriptor in enumerate(self.op_schema.outputs):
                 if value_descriptor.name == name:
-                    if index == 0:
-                        return self
-                    else:
-                        return SecondaryValue(self, index)
+                    return SecondaryValue(self, index)
         except ValueError:
             raise AttributeError(
                 f"{self.op_type} object has no attribute '{name}'")
@@ -75,7 +56,6 @@ class Node(NodeValue):
         if op_name is None:
             op_name = type(self).__name__
         self.op_schema = onnx.defs.get_schema(op_name)
-        super().__init__(0, **kwargs)
         for index, descriptor in enumerate(self.op_schema.inputs):
             if descriptor.option == onnx.defs.OpSchema.FormalParameterOption.Variadic:
                 setattr(self, descriptor.name, [
@@ -85,14 +65,17 @@ class Node(NodeValue):
                 setattr(self, descriptor.name, Value.as_value(args[index]))
             elif descriptor.name in kwargs:
                 setattr(self, descriptor.name, Value.as_value(kwargs[descriptor.name]))
+                del kwargs[descriptor.name]
             else:
                 setattr(self, descriptor.name, None)
 
-        for name, value in kwargs.items():
+        for name, value in dict(kwargs).items():
             if name in self.op_schema.attributes:
                 if isinstance(value, type):
                     value = onnx_type(type)
                 setattr(self, name, value)
+                del kwargs[name]
+        super().__init__(**kwargs)
 
     @property
     def op_type(self):
@@ -100,7 +83,7 @@ class Node(NodeValue):
 
     @property
     def value_node(self):
-        return self
+        return SecondaryValue(self, 0)
 
     def node_attribute_values(self):
         attributes = {}
@@ -132,15 +115,26 @@ class Node(NodeValue):
         return result
 
 
-class SecondaryValue(NodeValue):
+class SecondaryValue(Value):
     # For ops that have more than one output
     def __init__(self, value_node, value_index):
         self._value_node = value_node
-        super().__init__(value_index)
+        self.value_index = value_index
+        super().__init__(value_name=self.value_descriptor.name)
 
     @property
     def value_node(self):
         return self._value_node
+
+    @property
+    def value_descriptor(self):  
+        return self.value_node.op_schema.outputs[self.value_index]
+
+    def __eq__(self, other):
+        return self.value_node is other.value_node and self.value_index == other.value_index
+
+    def __hash__(self):
+        return hash((id(self.value_node), self.value_index))
 
     def __getattr__(self, name):
         return getattr(self.value_node, name)
@@ -149,11 +143,3 @@ class SecondaryValue(NodeValue):
 class Input(Value):
     def __init__(self, exporter, name, elt_type=None, shape=None):
         super().__init__(value_name=exporter.add_graph_input(name, self, elt_type=elt_type, shape=shape))
-        
-def make_op_factory(op_name):
-    return lambda *args, **kwargs : Node(*args, op_name=op_name, **kwargs)
-
-
-for op in ['Abs', 'Add', 'BatchNormalization', 'Cast', 'Concat',  'Constant', 'Conv', 'LSTM', 'MatMul', 'MaxPool', 'Mod',
-           'Mul', 'OneHot', 'Pad', 'Relu', 'Reshape', 'Resize', 'Sigmoid', 'Slice', 'Sub', 'Tanh', 'Tile', 'Transpose']:
-    globals()[op] = make_op_factory(op)
